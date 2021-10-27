@@ -22,7 +22,7 @@ const SPRITESHEET_BYTES: &[u8] = include_bytes!("../assets/spritesheet.png");
 
 const SPRITE_PIXELS_PER_TILE_SIDE: f32 = 16.0;
 
-use game::{SpriteKind, ArrowKind, Dir};
+use game::{SpriteKind, ArrowKind, Dir, WallColour};
 
 struct SourceSpec {
     x: f32,
@@ -33,6 +33,7 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
     use ArrowKind::*;
     use Dir::*;
     use SpriteKind::*;
+    use game::WallStyle::*;
 
     let sx = match sprite {
         NeutralEye 
@@ -43,7 +44,17 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         | NarrowRightEye
         | ClosedEye
         | HalfLidEye => 0.,
-        Arrow(_, Green)| DirEye(_) => 1.
+        Arrow(_, ArrowKind::Green)| DirEye(_) => 1.,
+        Wall(_, WallColour::DarkBrown) => 3.,
+        Wall(_, WallColour::White) => 5.,
+        Wall(_, WallColour::Grey) => 7.,
+        Wall(_, WallColour::Black) => 9.,
+        Wall(_, WallColour::Pink) => 11.,
+        Wall(_, WallColour::Red) => 13.,
+        Wall(_, WallColour::DarkRed) => 15.,
+        Wall(_, WallColour::Yellow) => 17.,
+        Wall(_, WallColour::Orange) => 19.,
+        Wall(_, WallColour::Brown) => 21.,
     };
 
     let sy = match sprite {
@@ -70,6 +81,8 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         NarrowRightEye => 12.,
         NarrowLeftEye => 13.,
         SmallPupilEye => 14.,
+        Wall(Smooth, _) => 0.,
+        Wall(Rivet, _) => 2.,
     };
 
     SourceSpec {
@@ -358,8 +371,9 @@ mod raylib_rs_platform {
                 };
     
                 // I don't know why the texture lookup seems to be offset by these
-                // amounts, but it seems to be.
-                const X_SOURCE_FUDGE: f32 = -2.;
+                // amounts, but it seems to be. This alos seems to have changed 
+                // based in the size of the texture. Weird.
+                const X_SOURCE_FUDGE: f32 = 0.;
                 const Y_SOURCE_FUDGE: f32 = -1.;
 
                 for cmd in commands.0.iter() {

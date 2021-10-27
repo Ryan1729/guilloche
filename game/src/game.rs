@@ -308,26 +308,80 @@ fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     }
 }
 
+from_rng_enum_def!{
+    WallStyle {
+        Smooth,
+        Rivet,
+    }
+}
+
+impl Default for WallStyle {
+    fn default() -> Self {
+        Self::Smooth
+    }
+}
+
+from_rng_enum_def!{
+    WallColour {
+        DarkBrown,
+        White,
+        Grey,
+        Black,
+        Pink,
+        Red,
+        DarkRed,
+        Yellow,
+        Orange,
+        Brown,
+    }
+}
+
+impl Default for WallColour {
+    fn default() -> Self {
+        Self::DarkBrown
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum SpriteKindSpec {
+    #[allow(unused)]
+    Arrow,
+    Wall,
+}
+
+impl SpriteKind {
+    fn from_rng(rng: &mut Xs, spec: SpriteKindSpec) -> Self {
+        use SpriteKindSpec::*;
+        match spec {
+            Arrow => {
+                SpriteKind::Arrow(Dir::from_rng(rng), ArrowKind::from_rng(rng))
+            },
+            Wall => {
+                SpriteKind::Wall(WallStyle::from_rng(rng), WallColour::from_rng(rng))
+            }
+        }
+    }
+}
+
 /// A Tile should always be at a particular position, but that position should be 
 /// derivable from the tiles location in the tiles array, so it doesn't need to be
 /// stored. But, we often want to get the tile's data and it's location as a single
 /// thing. This is why we have both `Tile` and `TileData`
 #[derive(Copy, Clone, Debug, Default)]
 struct TileData {
-    dir: Dir,
-    arrow_kind: ArrowKind,
+    sprite: SpriteKind,
 }
 
 impl TileData {
     fn from_rng(rng: &mut Xs) -> Self {
         Self {
-            dir: Dir::from_rng(rng),
-            arrow_kind: ArrowKind::from_rng(rng),
+            sprite: SpriteKind::from_rng(rng, SpriteKindSpec::Wall),
         }
     }
 
+    // TODO inline? We might end up deriving the sprite again, instead of storing it.
     fn sprite(&self) -> SpriteKind {
-        SpriteKind::Arrow(self.dir, self.arrow_kind)
+        self.sprite
     }
 }
 
