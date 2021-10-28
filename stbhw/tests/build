@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cc -o herringbone_generator herringbone_generator.c -lm
+
+cc -o herringbone_map herringbone_map.c -lm
