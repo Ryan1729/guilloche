@@ -6,3 +6,6 @@ authors = ["Ryan1729 <Ryan1729@gmail.com>"]
 license = "LICENSE"
 
 [dependencies]
+
+[build-dependencies]
+bindgen = "0.59.1"
