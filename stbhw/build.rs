@@ -27,4 +27,8 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+
+    cc::Build::new()
+        .file("wrapper.h")
+        .compile("wrapper");
 }
