@@ -29,6 +29,6 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     cc::Build::new()
-        .file("wrapper.h")
+        .file("wrapper.c")
         .compile("wrapper");
 }
