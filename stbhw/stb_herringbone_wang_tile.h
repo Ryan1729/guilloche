@@ -1,3 +1,7 @@
+// Added to fix a warning:
+// warning: ‘struct stbhw__process’ declared inside parameter list will not be visible outside of this definition or declaration
+// PR to add this at https://github.com/nothings/stb/pull/1236
+struct stbhw__process;
 /* stbhw - v0.7 -  http://nothings.org/gamedev/herringbone
    Herringbone Wang Tile Generator - Sean Barrett 2014 - public domain
 
