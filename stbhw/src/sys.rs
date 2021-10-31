@@ -110,20 +110,57 @@ fn raw_sanity() {
 
 #[test]
 fn raw_error() {
-    let mut ts = zeroed_tileset();
+    use core::{ptr, mem};
 
     const PIXEL_STRIDE: usize = 3;
     let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
 
-    // Enough that we don't get an out of bounds read.
-    let mut template_pixels = [0; 16 * 16 * PIXEL_STRIDE];
+    let mut config = stbhw_config {
+        is_corner: 0,
+        short_side_len: 3,
+        num_color: [1,1,1,1,1,1],
+        num_vary_x: 3,
+        num_vary_y: 3,
+        corner_type_color_template: [[0; 4]; 4],
+    };
+
+    let mut template_w = -2;
+    let mut template_h = -2;
+
+    unsafe {
+        stbhw_get_template_size(
+            &mut config,
+            &mut template_w,
+            &mut template_h,
+        );
+    }
+
+    // The size we got before, when running c version from the tests folder.
+    assert_eq!(template_w, 27);
+    assert_eq!(template_h, 49);
+
+    let mut template_pixels = [0; 27 * 49 * PIXEL_STRIDE];
+
+    let was_success = unsafe {
+        stbhw_make_template(
+            &mut config,
+            template_pixels.as_mut_ptr(),
+            template_w,
+            template_h,
+            template_w * pixel_stride,
+        )
+    };
+
+    assert_eq!(was_success, 1);
+
+    let mut ts = zeroed_tileset();
 
     let was_success = unsafe { 
         stbhw_build_tileset_from_image(
             &mut ts,
             template_pixels.as_mut_ptr(),
-            16 * pixel_stride,
-            16,
+            template_w * pixel_stride,
+            template_w,
             // We intentionally pass a zero h value to trigger an error case with an
             // error message. A zero w value causes a read to data[-1]!
             0,
