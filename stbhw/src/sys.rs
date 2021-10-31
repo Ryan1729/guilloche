@@ -22,8 +22,8 @@ fn zeroed_tileset() -> stbhw_tileset {
 fn raw_sanity() {
     use core::{ptr, mem};
 
-    const STRIDE: usize = 3;
-    let stride = STRIDE as _;
+    const PIXEL_STRIDE: usize = 3;
+    let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
 
     let mut config = stbhw_config {
         is_corner: 0,
@@ -49,7 +49,7 @@ fn raw_sanity() {
     assert_eq!(template_w, 27);
     assert_eq!(template_h, 49);
 
-    let mut template_pixels = [0; 27 * 49 * STRIDE];
+    let mut template_pixels = [0; 27 * 49 * PIXEL_STRIDE];
 
     let was_success = unsafe {
         stbhw_make_template(
@@ -57,7 +57,7 @@ fn raw_sanity() {
             template_pixels.as_mut_ptr(),
             template_w,
             template_h,
-            stride,
+            template_w * pixel_stride,
         )
     };
 
@@ -69,9 +69,9 @@ fn raw_sanity() {
         stbhw_build_tileset_from_image(
             &mut ts,
             template_pixels.as_mut_ptr(),
-            stride,
-            27,
-            49,
+            template_w * pixel_stride,
+            template_w,
+            template_h,
         )
     };
 
@@ -80,7 +80,7 @@ fn raw_sanity() {
     let map_w = 16;
     let map_h = 16;
 
-    let mut map_pixels = [0; 16 * 16 * STRIDE];
+    let mut map_pixels = [0; 16 * 16 * PIXEL_STRIDE];
 
     let was_success = unsafe {
         stbhw_generate_image(
@@ -88,7 +88,7 @@ fn raw_sanity() {
             // The comments in the .h file currently say this should always be NULL.
             ptr::null_mut(),
             map_pixels.as_mut_ptr(),
-            stride,
+            map_w * pixel_stride,
             map_w,
             map_h,
         )
@@ -99,7 +99,7 @@ fn raw_sanity() {
     // Because we didn't change the template, the whole map image should be the
     // default #ffffff.
     for i in 0..(map_w * map_h) {
-        assert_eq!(map_pixels[i as usize], 0xff, "`map_pixels[{}]` was not 0xff!", i);
+        assert_eq!(map_pixels[i as usize], 0xff, "`map_pixels[{}]` was not 0xff! {:?}", i, map_pixels);
     }
 
     unsafe { stbhw_free_tileset(&mut ts) } ;
@@ -112,17 +112,17 @@ fn raw_sanity() {
 fn raw_error() {
     let mut ts = zeroed_tileset();
 
-    const STRIDE: usize = 3;
-    let stride = STRIDE as _;
+    const PIXEL_STRIDE: usize = 3;
+    let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
 
     // Enough that we don't get an out of bounds read.
-    let mut template_pixels = [0; 16 * 16 * STRIDE];
+    let mut template_pixels = [0; 16 * 16 * PIXEL_STRIDE];
 
     let was_success = unsafe { 
         stbhw_build_tileset_from_image(
             &mut ts,
             template_pixels.as_mut_ptr(),
-            stride,
+            16 * pixel_stride,
             16,
             // We intentionally pass a zero h value to trigger an error case with an
             // error message. A zero w value causes a read to data[-1]!
