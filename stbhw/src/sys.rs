@@ -177,3 +177,35 @@ fn raw_error() {
     assert_eq!(last_error, "image too small for configuration");
 }
 
+#[test]
+fn xs_global_default_seed() {
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911405);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1788228150);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195490147);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1788714188);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 3497122649);
+}
+
+#[test]
+fn xs_global_set_seed() {
+    let mut seed: [u8; 16] = [
+        0x12, 0x34, 0x56, 0x78,
+        0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78,
+        0x90, 0xAB, 0xCD, 0xEF,
+    ];
+dbg!();
+    unsafe { xs_seed_global(seed.as_mut_ptr()) }
+dbg!();
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 4198859171);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 863685725);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2976477321);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2018915346);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2932402722);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1261814658);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2971803477);
+    assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2015189959);
+}

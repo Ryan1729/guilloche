@@ -92,6 +92,39 @@ fn xs_from_seed(mut seed: Seed) -> Xs {
     ]
 }
 
+#[test]
+fn xs_bad_seed() {
+    let mut rng = xs_from_seed(<_>::default());
+
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 195911576);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 195911405);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 195911576);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 1788228150);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 195490147);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 1788714188);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 195911576);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 3497122649);
+}
+
+#[test]
+fn xs_set_seed() {
+    let mut rng = xs_from_seed([
+        0x12, 0x34, 0x56, 0x78,
+        0x90, 0xAB, 0xCD, 0xEF,
+        0x12, 0x34, 0x56, 0x78,
+        0x90, 0xAB, 0xCD, 0xEF,
+    ]);
+
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 4198859171);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 863685725);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2976477321);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2018915346);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2932402722);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 1261814658);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2971803477);
+    assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2015189959);
+}
+
 /// This type alias makes adding a custom newtype easy.
 pub type X = f32;
 /// This type alias makes adding a custom newtype easy.

@@ -3,8 +3,10 @@
 # bindgen was installed by running:
 # cargo install bindgen
 
-bindgen stb_herringbone_wang_tile.h -o src/sys/bindings.rs \
+bindgen wrapper.h -o src/sys/bindings.rs \
 --allowlist-function '^stbhw_.*'                           \
+--allowlist-function '^xs_.*'                              \
+--blocklist-type '^__.*'                                   \
 --no-layout-tests 
 
 # We use --no-layout-tests becasue that seems less bad than 
