@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["Ryan1729 <Ryan1729@gmail.com>"]
 license = "LICENSE"
 
+[lib]
+path = "./src/stbhw.rs"
+
 [dependencies]
 
 [build-dependencies]
