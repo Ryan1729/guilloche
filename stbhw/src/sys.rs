@@ -4,7 +4,7 @@
 
 mod bindings;
 
-use bindings::*;
+pub use bindings::*;
 
 use std::ffi::CStr;
 
