@@ -110,7 +110,6 @@ impl Default for VariantConfig {
     }
 }
 
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct EdgeConfig {
     pub num_color: [EdgeNumColour; 4]
@@ -226,17 +225,73 @@ impl TryFrom<Int> for CornerNumColour {
     }
 }
 
-/*
-extern "C" {
-    pub fn stbhw_make_template(
-        c: *mut stbhw_config,
-        data: *mut ::std::os::raw::c_uchar,
-        w: ::std::os::raw::c_int,
-        h: ::std::os::raw::c_int,
-        stride_in_bytes: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
+pub struct ImageSize {
+    pub w: Int,
+    pub h: Int,
 }
 
+pub struct Template {
+    pub size: ImageSize,
+    pub pixels: Vec<u8>,
+}
+
+pub const BYTES_PER_PIXEL: Int = 3;
+
+pub fn make_template(config: &Config, size: ImageSize) -> Result<Template, String> {
+    let mut cfg = config.render_config();
+
+    let mut pixels = vec![0; BYTES_PER_PIXEL as usize * size.w as usize * size.h as usize];
+
+    // SAFETY: The type safety provided by `Config`, and the checks in the C
+    //   code should keep those promlematic values that are likely to occur
+    //   from causing too much trouble. Aborts due to asserts being hit are
+    //   not currently considered too much trouble.
+    let was_success = unsafe {
+        sys::stbhw_make_template(
+            &mut cfg,
+            pixels.as_mut_ptr(),
+            size.w,
+            size.h,
+            size.w * BYTES_PER_PIXEL,
+        )
+    };
+
+    if was_success == 1 {
+        Ok(Template {
+            size,
+            pixels,
+        })
+    } else {
+        last_error()
+    }
+}
+
+fn last_error<T>() -> Result<T, String> {
+    // SAFETY: `stbhw_get_last_error` is technically not thread safe, in that
+    // if multiple threads attempt to access the error data races can occur.
+    // But, since the error strings are static, the worst that can happen
+    // is we return the wrong error message.
+    // TODO: Synchronize calls to `stbhw_get_last_error`?
+    let error_or_null = unsafe { sys::stbhw_get_last_error() };
+
+    let s = if error_or_null.is_null() {
+        "Error string was null!".to_string()
+    } else {
+        // SAFETY:
+        // 1. We checked above that the ptr was not null.
+        // 2. `stbhw` only returns either pointers to static null-terminated
+        //    strings, or null pointers from `stbhw_get_last_error`.
+        let last_error = unsafe { std::ffi::CStr::from_ptr(error_or_null) }
+            .to_str()
+            .map_err(|e| e.to_string())?;
+
+        last_error.to_string()
+    };
+
+    Err(s)
+}
+
+/*
 extern "C" {
     pub fn stbhw_build_tileset_from_image(
         ts: *mut stbhw_tileset,
