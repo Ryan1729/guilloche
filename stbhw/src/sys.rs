@@ -197,9 +197,9 @@ fn xs_global_set_seed() {
         0x12, 0x34, 0x56, 0x78,
         0x90, 0xAB, 0xCD, 0xEF,
     ];
-dbg!();
+
     unsafe { xs_seed_global(seed.as_mut_ptr()) }
-dbg!();
+
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 4198859171);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 863685725);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2976477321);
