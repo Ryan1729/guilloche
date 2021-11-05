@@ -168,7 +168,7 @@ fn raw_error() {
 
     assert!(!last_error.is_null());
 
-    // SAFETY: 
+    // SAFETY:
     // 1. We asserted above that the ptr was not null.
     // 2. `stbhw` only returns either pointers to static null-terminated
     //    strings, or null pointers from `stbhw_get_last_error`.
@@ -178,7 +178,21 @@ fn raw_error() {
 }
 
 #[test]
-fn xs_global_default_seed() {
+fn xs_global_seed() {
+    // default seed {
+    // These numbers were collected by running this test, without the set_seed
+    // call, in isolation. Given that, we can conclude that setting the seed
+    // to this value mimics starting with the default.
+
+    let mut seed: [u8; 16] = [
+        0xED, 0x5E, 0xAD, 0x0B,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+    ];
+
+    unsafe { xs_seed_global(seed.as_mut_ptr()) }
+
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911405);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
@@ -187,10 +201,9 @@ fn xs_global_default_seed() {
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1788714188);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 3497122649);
-}
+    // }
 
-#[test]
-fn xs_global_set_seed() {
+    // Setting to a different seed {
     let mut seed: [u8; 16] = [
         0x12, 0x34, 0x56, 0x78,
         0x90, 0xAB, 0xCD, 0xEF,
@@ -208,4 +221,5 @@ fn xs_global_set_seed() {
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1261814658);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2971803477);
     assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2015189959);
+    // }
 }
