@@ -231,8 +231,18 @@ pub struct ImageSize {
 }
 
 pub struct Template {
-    pub size: ImageSize,
-    pub pixels: Vec<u8>,
+    size: ImageSize,
+    pixels: Vec<u8>,
+}
+
+impl Template {
+    pub fn size(&self) -> &ImageSize {
+        &self.size
+    }
+
+    pub fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
 }
 
 pub const BYTES_PER_PIXEL: Int = 3;
@@ -297,6 +307,7 @@ pub struct Tileset {
 
 impl Drop for Tileset {
     fn drop(&mut self) {
+        // SAFTEY: Rust should guarentee that `drop` is called at most once.
         unsafe {
             sys::stbhw_free_tileset(&mut self.tileset);
         }
@@ -307,6 +318,9 @@ impl Tileset {
     pub fn from_template(template: &mut Template) -> Self {
         let mut tileset = sys::zeroed_tileset();
 
+        // SAFETY: Because we only expose read only getters for `Template`'s
+        //   fields, we know that the length of `pixels` and the length described
+        //   by `size` match up.
         unsafe {
             sys::stbhw_build_tileset_from_image(
                 &mut tileset,
