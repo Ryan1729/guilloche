@@ -291,16 +291,39 @@ fn last_error<T>() -> Result<T, String> {
     Err(s)
 }
 
-/*
-extern "C" {
-    pub fn stbhw_build_tileset_from_image(
-        ts: *mut stbhw_tileset,
-        pixels: *mut ::std::os::raw::c_uchar,
-        stride_in_bytes: ::std::os::raw::c_int,
-        w: ::std::os::raw::c_int,
-        h: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
+pub struct Tileset {
+    tileset: sys::stbhw_tileset,
 }
+
+impl Drop for Tileset {
+    fn drop(&mut self) {
+        unsafe {
+            sys::stbhw_free_tileset(&mut self.tileset);
+        }
+    }
+}
+
+impl Tileset {
+    pub fn from_template(template: &mut Template) -> Self {
+        let mut tileset = sys::zeroed_tileset();
+
+        unsafe {
+            sys::stbhw_build_tileset_from_image(
+                &mut tileset,
+                template.pixels.as_mut_ptr(),
+                template.size.w * BYTES_PER_PIXEL,
+                template.size.w,
+                template.size.h,
+            );
+        }
+
+        Self {
+            tileset
+        }
+    }
+}
+
+/*
 extern "C" {
     pub fn stbhw_generate_image(
         ts: *mut stbhw_tileset,
@@ -310,11 +333,6 @@ extern "C" {
         w: ::std::os::raw::c_int,
         h: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
-}
-
-struct stbhw_tileset;
-extern "C" {
-    pub fn stbhw_free_tileset(ts: *mut stbhw_tileset);
 }
 */
 

@@ -1,14 +1,13 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+
 #![allow(unused)]
 
 mod bindings;
 
 pub use bindings::*;
 
-use std::ffi::CStr;
-
-fn zeroed_tileset() -> stbhw_tileset {
+pub fn zeroed_tileset() -> stbhw_tileset {
     // SAFETY: `stbhw_tileset` contains no references; only raw pointers.
     unsafe { core::mem::zeroed() }
 }
@@ -106,6 +105,7 @@ fn raw_sanity() {
 #[test]
 fn raw_error() {
     use core::{ptr, mem};
+    use std::ffi::CStr;
 
     const PIXEL_STRIDE: usize = 3;
     let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
@@ -150,7 +150,7 @@ fn raw_error() {
 
     let mut ts = zeroed_tileset();
 
-    let was_success = unsafe { 
+    let was_success = unsafe {
         stbhw_build_tileset_from_image(
             &mut ts,
             template_pixels.as_mut_ptr(),
