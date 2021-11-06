@@ -2,6 +2,7 @@ mod sys;
 
 pub type Int = ::std::os::raw::c_int;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ImageSize {
     pub w: Int,
     pub h: Int,
@@ -25,7 +26,7 @@ impl Config {
     pub fn get_template_size(&self) -> ImageSize {
         let mut cfg = self.render_config();
 
-        get_template_size_from_cfg(&mut cfg);
+        get_template_size_from_cfg(&mut cfg)
     }
 
     pub fn make_template(&self) -> Result<Template, String> {
@@ -274,6 +275,7 @@ impl TryFrom<Int> for CornerNumColour {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Template {
     size: ImageSize,
     pixels: Vec<u8>,
@@ -316,6 +318,7 @@ fn last_error<T>() -> Result<T, String> {
     Err(s)
 }
 
+#[derive(Debug)]
 pub struct Tileset {
     tileset: sys::stbhw_tileset,
 }
@@ -380,6 +383,7 @@ impl Tileset {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Map {
     pub size: ImageSize,
     pub pixels: Vec<u8>,
