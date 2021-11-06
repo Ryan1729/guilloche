@@ -110,18 +110,7 @@ impl Config {
     }
 }
 
-fn render_edge_num_color(num_color: [EdgeNumColour; 4]) -> [Int; 6] {
-    [
-        num_color[0].into(),
-        num_color[1].into(),
-        num_color[2].into(),
-        num_color[3].into(),
-        0,
-        0,
-    ]
-}
-
-fn render_corner_num_color(num_color: [CornerNumColour; 6]) -> [Int; 6] {
+fn render_edge_num_color(num_color: [EdgeNumColour; 6]) -> [Int; 6] {
     [
         num_color[0].into(),
         num_color[1].into(),
@@ -129,6 +118,17 @@ fn render_corner_num_color(num_color: [CornerNumColour; 6]) -> [Int; 6] {
         num_color[3].into(),
         num_color[4].into(),
         num_color[5].into(),
+    ]
+}
+
+fn render_corner_num_color(num_color: [CornerNumColour; 4]) -> [Int; 6] {
+    [
+        num_color[0].into(),
+        num_color[1].into(),
+        num_color[2].into(),
+        num_color[3].into(),
+        0,
+        0,
     ]
 }
 
@@ -162,7 +162,7 @@ impl Default for VariantConfig {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct EdgeConfig {
-    pub num_color: [EdgeNumColour; 4]
+    pub num_color: [EdgeNumColour; 6]
 }
 
 /// The documentation embedded in the `stb_herringbone_wang.h` file says that the
@@ -226,7 +226,7 @@ impl TryFrom<Int> for EdgeNumColour {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CornerConfig {
-    pub num_color: [CornerNumColour; 6],
+    pub num_color: [CornerNumColour; 4],
     pub corner_type_color_template: [[bool; 4usize]; 4usize],
 }
 
@@ -410,7 +410,7 @@ fn wrapped_sanity() {
         num_vary_x: 3,
         num_vary_y: 3,
         variant: VariantConfig::Edge(EdgeConfig {
-            num_color: [One,One,One,One],
+            num_color: [One,One,One,One,One,One],
         }),
     };
 
@@ -453,7 +453,7 @@ fn wrapped_error() {
         num_vary_x: 3,
         num_vary_y: 3,
         variant: VariantConfig::Edge(EdgeConfig {
-            num_color: [One,One,One,One],
+            num_color: [One,One,One,One,One,One],
         }),
     };
 
