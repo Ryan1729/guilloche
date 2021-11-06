@@ -376,9 +376,9 @@ pub struct Map {
     pub pixels: Vec<u8>,
 }
 
-pub type xs_seed = [u8; 16usize];
+pub type Seed = [u8; 16];
 
-pub fn xs_seed_global(seed: xs_seed) {
+pub fn xs_seed_global(mut seed: Seed) {
     // SAFETY: Any byte value is valid as a seed. 0 defaults to a different fixed
     // seed, so even that is acceptable.
     unsafe { sys::xs_seed_global(seed.as_mut_ptr()) }
