@@ -333,24 +333,28 @@ impl Drop for Tileset {
 }
 
 impl Tileset {
-    pub fn from_template(template: &mut Template) -> Self {
+    pub fn from_template(template: &mut Template) -> Result<Self, String> {
         let mut tileset = sys::zeroed_tileset();
 
         // SAFETY: Because we only expose read only getters for `Template`'s
         //   fields, we know that the length of `pixels` and the length described
         //   by `size` match up.
-        unsafe {
+        let was_success = unsafe {
             sys::stbhw_build_tileset_from_image(
                 &mut tileset,
                 template.pixels.as_mut_ptr(),
                 template.size.w * BYTES_PER_PIXEL,
                 template.size.w,
                 template.size.h,
-            );
-        }
+            )
+        };
 
-        Self {
-            tileset
+        if was_success == 1 {
+            Ok(Self {
+                tileset
+            })
+        } else {
+            last_error()
         }
     }
 
@@ -395,4 +399,84 @@ pub fn xs_seed_global(mut seed: Seed) {
     // SAFETY: Any byte value is valid as a seed. 0 defaults to a different fixed
     // seed, so even that is acceptable.
     unsafe { sys::xs_seed_global(seed.as_mut_ptr()) }
+}
+
+#[test]
+fn wrapped_sanity() {
+    use EdgeNumColour::One;
+
+    let config = Config {
+        short_side_len: 3,
+        num_vary_x: 3,
+        num_vary_y: 3,
+        variant: VariantConfig::Edge(EdgeConfig {
+            num_color: [One,One,One,One],
+        }),
+    };
+
+    let ImageSize {
+        w: template_w,
+        h: template_h
+    } = config.get_template_size();
+
+    // The size we got before, when running c version from the tests folder.
+    assert_eq!(template_w, 27);
+    assert_eq!(template_h, 49);
+
+    let mut template = config.make_template().unwrap();
+
+    let mut ts = Tileset::from_template(&mut template).unwrap();
+
+    let map = ts.generate_image(ImageSize {
+        w: 16,
+        h: 16
+    }).unwrap();
+
+    // Because we didn't change the template, the whole map image should be the
+    // default #ffffff.
+    for i in 0..(map.size.w * map.size.h) {
+        assert_eq!(map.pixels[i as usize], 0xff, "`map.pixels[{}]` was not 0xff! {:?}", i, map.pixels);
+    }
+
+    drop(ts);
+
+    // If we got here, stbhw_free_tileset didn't panic.
+    assert!(true);
+}
+
+#[test]
+fn wrapped_error() {
+    use EdgeNumColour::One;
+
+    let config = Config {
+        short_side_len: 3,
+        num_vary_x: 3,
+        num_vary_y: 3,
+        variant: VariantConfig::Edge(EdgeConfig {
+            num_color: [One,One,One,One],
+        }),
+    };
+
+    let ImageSize {
+        w: template_w,
+        h: template_h
+    } = config.get_template_size();
+
+    // The size we got before, when running c version from the tests folder.
+    assert_eq!(template_w, 27);
+    assert_eq!(template_h, 49);
+
+    let mut template = config.make_template().unwrap();
+
+    // We intentionally pass a zero h value to trigger an error case with an
+    // error message. A zero w value causes a read to data[-1]!
+    // It's worth noting this particular error case cannot be triggered without
+    // mutating a private field. Are there still any errors that can be triggered
+    // without doing that?
+
+    template.size.h = 0;
+
+    let error = Tileset::from_template(&mut template).unwrap_err();
+
+    assert_eq!(error, "image too small for configuration");
 }
