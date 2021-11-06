@@ -230,6 +230,12 @@ pub struct ImageSize {
     pub h: Int,
 }
 
+impl ImageSize {
+    fn alloc_pixels(&self) -> Vec<u8> {
+        vec![0; BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize]
+    }
+}
+
 pub struct Template {
     size: ImageSize,
     pixels: Vec<u8>,
@@ -250,7 +256,7 @@ pub const BYTES_PER_PIXEL: Int = 3;
 pub fn make_template(config: &Config, size: ImageSize) -> Result<Template, String> {
     let mut cfg = config.render_config();
 
-    let mut pixels = vec![0; BYTES_PER_PIXEL as usize * size.w as usize * size.h as usize];
+    let mut pixels = size.alloc_pixels();
 
     // SAFETY: The type safety provided by `Config`, and the checks in the C
     //   code should keep those promlematic values that are likely to occur
@@ -335,20 +341,41 @@ impl Tileset {
             tileset
         }
     }
+
+    pub fn generate_image(&mut self, map_size: ImageSize) -> Result<Map, String> {
+        let mut pixels = map_size.alloc_pixels();
+
+        // SAFETY: Because we only expose read only getters for `Template`'s
+        //   fields, we know that the length of `pixels` and the length described
+        //   by `size` match up.
+        let was_success = unsafe {
+            sys::stbhw_generate_image(
+                &mut self.tileset,
+                // The comments in the .h file currently say this should always
+                // be NULL.
+                core::ptr::null_mut(),
+                pixels.as_mut_ptr(),
+                map_size.w * BYTES_PER_PIXEL,
+                map_size.w,
+                map_size.h,
+            )
+        };
+
+        if was_success == 1 {
+            Ok(Map {
+                size: map_size,
+                pixels,
+            })
+        } else {
+            last_error()
+        }
+    }
 }
 
-/*
-extern "C" {
-    pub fn stbhw_generate_image(
-        ts: *mut stbhw_tileset,
-        weighting: *mut *mut ::std::os::raw::c_int,
-        pixels: *mut ::std::os::raw::c_uchar,
-        stride_in_bytes: ::std::os::raw::c_int,
-        w: ::std::os::raw::c_int,
-        h: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
+pub struct Map {
+    pub size: ImageSize,
+    pub pixels: Vec<u8>,
 }
-*/
 
 /*
 pub type xs_seed = [u8; 16usize];
