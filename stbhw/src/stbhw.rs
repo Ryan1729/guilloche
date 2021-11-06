@@ -345,9 +345,8 @@ impl Tileset {
     pub fn generate_image(&mut self, map_size: ImageSize) -> Result<Map, String> {
         let mut pixels = map_size.alloc_pixels();
 
-        // SAFETY: Because we only expose read only getters for `Template`'s
-        //   fields, we know that the length of `pixels` and the length described
-        //   by `size` match up.
+        // SAFETY: Because we alloc the pixels in this method, we know that the
+        //   length of `pixels` and the length described by `map_size` match up.
         let was_success = unsafe {
             sys::stbhw_generate_image(
                 &mut self.tileset,
