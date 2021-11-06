@@ -2,6 +2,17 @@ mod sys;
 
 pub type Int = ::std::os::raw::c_int;
 
+pub struct ImageSize {
+    pub w: Int,
+    pub h: Int,
+}
+
+impl ImageSize {
+    fn alloc_pixels(&self) -> Vec<u8> {
+        vec![0; BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize]
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Config {
     pub short_side_len: Int,
@@ -11,25 +22,63 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn get_template_size(&self) -> (Int, Int) {
-        let mut w = -1;
-        let mut h = -1;
+    pub fn get_template_size(&self) -> ImageSize {
+        let mut cfg = self.render_config();
 
-        let mut config = self.render_config();
+        get_template_size_from_cfg(&mut cfg);
+    }
+
+    pub fn make_template(&self) -> Result<Template, String> {
+        let mut cfg = self.render_config();
+
+        let size = get_template_size_from_cfg(&mut cfg);
+
+        let mut pixels = size.alloc_pixels();
 
         // SAFETY: The type safety provided by `Config`, and the checks in the C
         //   code should keep those promlematic values that are likely to occur
         //   from causing too much trouble. Aborts due to asserts being hit are
         //   not currently considered too much trouble.
-        unsafe {
-            sys::stbhw_get_template_size(
-                &mut config,
-                &mut w,
-                &mut h,
-            );
-        }
+        let was_success = unsafe {
+            sys::stbhw_make_template(
+                &mut cfg,
+                pixels.as_mut_ptr(),
+                size.w,
+                size.h,
+                size.w * BYTES_PER_PIXEL,
+            )
+        };
 
-        (w, h)
+        if was_success == 1 {
+            Ok(Template {
+                size,
+                pixels,
+            })
+        } else {
+            last_error()
+        }
+    }
+}
+
+fn get_template_size_from_cfg(cfg: &mut sys::stbhw_config) -> ImageSize {
+    let mut w = -1;
+    let mut h = -1;
+
+    // SAFETY: The type safety provided by `Config`, and the checks in the C
+    //   code should keep those promlematic values that are likely to occur
+    //   from causing too much trouble. Aborts due to asserts being hit are
+    //   not currently considered too much trouble.
+    unsafe {
+        sys::stbhw_get_template_size(
+            cfg,
+            &mut w,
+            &mut h,
+        );
+    }
+
+    ImageSize {
+        w,
+        h
     }
 }
 
@@ -225,17 +274,6 @@ impl TryFrom<Int> for CornerNumColour {
     }
 }
 
-pub struct ImageSize {
-    pub w: Int,
-    pub h: Int,
-}
-
-impl ImageSize {
-    fn alloc_pixels(&self) -> Vec<u8> {
-        vec![0; BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize]
-    }
-}
-
 pub struct Template {
     size: ImageSize,
     pixels: Vec<u8>,
@@ -252,35 +290,6 @@ impl Template {
 }
 
 pub const BYTES_PER_PIXEL: Int = 3;
-
-pub fn make_template(config: &Config, size: ImageSize) -> Result<Template, String> {
-    let mut cfg = config.render_config();
-
-    let mut pixels = size.alloc_pixels();
-
-    // SAFETY: The type safety provided by `Config`, and the checks in the C
-    //   code should keep those promlematic values that are likely to occur
-    //   from causing too much trouble. Aborts due to asserts being hit are
-    //   not currently considered too much trouble.
-    let was_success = unsafe {
-        sys::stbhw_make_template(
-            &mut cfg,
-            pixels.as_mut_ptr(),
-            size.w,
-            size.h,
-            size.w * BYTES_PER_PIXEL,
-        )
-    };
-
-    if was_success == 1 {
-        Ok(Template {
-            size,
-            pixels,
-        })
-    } else {
-        last_error()
-    }
-}
 
 fn last_error<T>() -> Result<T, String> {
     // SAFETY: `stbhw_get_last_error` is technically not thread safe, in that
