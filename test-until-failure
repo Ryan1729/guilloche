@@ -1,0 +1,7 @@
+#!/bin/bash
+
+tries=0
+
+while tries=$((tries + 1)); cargo test --workspace; do :; done
+
+echo "tries: $tries"
