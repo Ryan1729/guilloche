@@ -427,82 +427,294 @@ pub fn xs_seed_global(mut seed: Seed) {
     unsafe { sys::xs_seed_global(seed.as_mut_ptr()) }
 }
 
-#[test]
-fn wrapped_sanity() {
-    use EdgeNumColour::One;
+#[cfg(test)]
+mod tests {
+    use super::{*, sys::*};
 
-    let config = Config {
-        short_side_len: 3,
-        num_vary_x: 3,
-        num_vary_y: 3,
-        variant: VariantConfig::Edge(EdgeConfig {
-            num_color: [One,One,One,One,One,One],
-        }),
-    };
+    #[test]
+    fn raw_error() {
+        use std::ffi::CStr;
 
-    let ImageSize {
-        w: template_w,
-        h: template_h
-    } = config.get_template_size();
+        const PIXEL_STRIDE: usize = 3;
+        let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
 
-    // The size we got before, when running c version from the tests folder.
-    assert_eq!(template_w, 27);
-    assert_eq!(template_h, 49);
+        let mut config = stbhw_config {
+            is_corner: 0,
+            short_side_len: 3,
+            num_color: [1,1,1,1,1,1],
+            num_vary_x: 3,
+            num_vary_y: 3,
+            corner_type_color_template: [[0; 4]; 4],
+        };
 
-    let mut template = config.make_template().unwrap();
+        let mut template_w = -2;
+        let mut template_h = -2;
 
-    let mut ts = Tileset::from_template(&mut template).unwrap();
+        unsafe {
+            stbhw_get_template_size(
+                &mut config,
+                &mut template_w,
+                &mut template_h,
+            );
+        }
 
-    let map = ts.generate_image(ImageSize {
-        w: 16,
-        h: 16
-    }).unwrap();
+        // The size we got before, when running c version from the tests folder.
+        assert_eq!(template_w, 27);
+        assert_eq!(template_h, 49);
 
-    // Because we didn't change the template, the whole map image should be the
-    // default #ffffff.
-    for i in 0..(map.size.w * map.size.h) {
-        assert_eq!(map.pixels[i as usize], 0xff, "`map.pixels[{}]` was not 0xff! {:?}", i, map.pixels);
+        let mut template_pixels = [0; 27 * 49 * PIXEL_STRIDE];
+
+        let was_success = unsafe {
+            stbhw_make_template(
+                &mut config,
+                template_pixels.as_mut_ptr(),
+                template_w,
+                template_h,
+                template_w * pixel_stride,
+            )
+        };
+
+        assert_eq!(was_success, 1);
+
+        let mut ts = zeroed_tileset();
+
+        let was_success = unsafe {
+            stbhw_build_tileset_from_image(
+                &mut ts,
+                template_pixels.as_mut_ptr(),
+                template_w * pixel_stride,
+                template_w,
+                // We intentionally pass a zero h value to trigger an error case with an
+                // error message. A zero w value causes a read to data[-1]!
+                0,
+            )
+        };
+
+        assert_eq!(was_success, 0);
+
+        let last_error = unsafe { stbhw_get_last_error() };
+
+        assert!(!last_error.is_null());
+
+        // SAFETY:
+        // 1. We asserted above that the ptr was not null.
+        // 2. `stbhw` only returns either pointers to static null-terminated
+        //    strings, or null pointers from `stbhw_get_last_error`.
+        let last_error = unsafe { CStr::from_ptr(last_error) }.to_str().unwrap();
+
+        assert_eq!(last_error, "image too small for configuration");
     }
 
-    drop(ts);
+    #[test]
+    fn wrapped_error() {
+        use EdgeNumColour::One;
 
-    // If we got here, stbhw_free_tileset didn't panic.
-    assert!(true);
-}
+        let config = Config {
+            short_side_len: 3,
+            num_vary_x: 3,
+            num_vary_y: 3,
+            variant: VariantConfig::Edge(EdgeConfig {
+                num_color: [One,One,One,One,One,One],
+            }),
+        };
 
-#[test]
-fn wrapped_error() {
-    use EdgeNumColour::One;
+        let ImageSize {
+            w: template_w,
+            h: template_h
+        } = config.get_template_size();
 
-    let config = Config {
-        short_side_len: 3,
-        num_vary_x: 3,
-        num_vary_y: 3,
-        variant: VariantConfig::Edge(EdgeConfig {
-            num_color: [One,One,One,One,One,One],
-        }),
-    };
+        // The size we got before, when running c version from the tests folder.
+        assert_eq!(template_w, 27);
+        assert_eq!(template_h, 49);
 
-    let ImageSize {
-        w: template_w,
-        h: template_h
-    } = config.get_template_size();
+        let mut template = config.make_template().unwrap();
 
-    // The size we got before, when running c version from the tests folder.
-    assert_eq!(template_w, 27);
-    assert_eq!(template_h, 49);
+        // We intentionally pass a zero h value to trigger an error case with an
+        // error message. A zero w value causes a read to data[-1]!
+        // It's worth noting this particular error case cannot be triggered without
+        // mutating a private field. Are there still any errors that can be triggered
+        // without doing that?
 
-    let mut template = config.make_template().unwrap();
+        template.size.h = 0;
 
-    // We intentionally pass a zero h value to trigger an error case with an
-    // error message. A zero w value causes a read to data[-1]!
-    // It's worth noting this particular error case cannot be triggered without
-    // mutating a private field. Are there still any errors that can be triggered
-    // without doing that?
+        let error = Tileset::from_template(&mut template).unwrap_err();
 
-    template.size.h = 0;
+        assert_eq!(error, "image too small for configuration");
+    }
 
-    let error = Tileset::from_template(&mut template).unwrap_err();
+    #[cfg_attr(not(feature = "unsynced-tests"), test)]
+    #[cfg_attr(feature = "unsynced-tests", allow(unused))]
+    fn rng_touching_tests() {
+        // First so the default is set.
+        xs_global_default_seed();
 
-    assert_eq!(error, "image too small for configuration");
+        raw_sanity();
+        wrapped_sanity();
+
+        xs_global_set_seed();
+    }
+
+    #[cfg_attr(feature = "unsynced-tests", test)]
+    fn raw_sanity() {
+        const PIXEL_STRIDE: usize = 3;
+        let pixel_stride: ::std::os::raw::c_int = PIXEL_STRIDE as _;
+
+        let mut config = stbhw_config {
+            is_corner: 0,
+            short_side_len: 3,
+            num_color: [1,1,1,1,1,1],
+            num_vary_x: 3,
+            num_vary_y: 3,
+            corner_type_color_template: [[0; 4]; 4],
+        };
+
+        let mut template_w = -2;
+        let mut template_h = -2;
+
+        unsafe {
+            stbhw_get_template_size(
+                &mut config,
+                &mut template_w,
+                &mut template_h,
+            );
+        }
+
+        // The size we got before, when running c version from the tests folder.
+        assert_eq!(template_w, 27);
+        assert_eq!(template_h, 49);
+
+        let mut template_pixels = [0; 27 * 49 * PIXEL_STRIDE];
+
+        let was_success = unsafe {
+            stbhw_make_template(
+                &mut config,
+                template_pixels.as_mut_ptr(),
+                template_w,
+                template_h,
+                template_w * pixel_stride,
+            )
+        };
+
+        assert_eq!(was_success, 1);
+
+        let mut ts = zeroed_tileset();
+
+        let was_success = unsafe {
+            stbhw_build_tileset_from_image(
+                &mut ts,
+                template_pixels.as_mut_ptr(),
+                template_w * pixel_stride,
+                template_w,
+                template_h,
+            )
+        };
+
+        assert_eq!(was_success, 1);
+
+        let map_w = 16;
+        let map_h = 16;
+
+        let mut map_pixels = [0; 16 * 16 * PIXEL_STRIDE];
+
+        let was_success = unsafe {
+            stbhw_generate_image(
+                &mut ts,
+                // The comments in the .h file currently say this should always be NULL.
+                core::ptr::null_mut(),
+                map_pixels.as_mut_ptr(),
+                map_w * pixel_stride,
+                map_w,
+                map_h,
+            )
+        };
+
+        assert_eq!(was_success, 1);
+
+        // Because we didn't change the template, the whole map image should be the
+        // default #ffffff.
+        for i in 0..(map_w * map_h) {
+            assert_eq!(map_pixels[i as usize], 0xff, "`map_pixels[{}]` was not 0xff! {:?}", i, map_pixels);
+        }
+
+        unsafe { stbhw_free_tileset(&mut ts) } ;
+
+        // If we got here, stbhw_free_tileset didn't panic.
+        assert!(true);
+    }
+
+    #[cfg_attr(feature = "unsynced-tests", test)]
+    fn wrapped_sanity() {
+        use EdgeNumColour::One;
+
+        let config = Config {
+            short_side_len: 3,
+            num_vary_x: 3,
+            num_vary_y: 3,
+            variant: VariantConfig::Edge(EdgeConfig {
+                num_color: [One,One,One,One,One,One],
+            }),
+        };
+
+        let ImageSize {
+            w: template_w,
+            h: template_h
+        } = config.get_template_size();
+
+        // The size we got before, when running c version from the tests folder.
+        assert_eq!(template_w, 27);
+        assert_eq!(template_h, 49);
+
+        let mut template = config.make_template().unwrap();
+
+        let mut ts = Tileset::from_template(&mut template).unwrap();
+
+        let map = ts.generate_image(ImageSize {
+            w: 16,
+            h: 16
+        }).unwrap();
+
+        // Because we didn't change the template, the whole map image should be the
+        // default #ffffff.
+        for i in 0..(map.size.w * map.size.h) {
+            assert_eq!(map.pixels[i as usize], 0xff, "`map.pixels[{}]` was not 0xff! {:?}", i, map.pixels);
+        }
+
+        drop(ts);
+
+        // If we got here, stbhw_free_tileset didn't panic.
+        assert!(true);
+    }
+
+    #[cfg_attr(feature = "unsynced-tests", test)]
+    fn xs_global_default_seed() {
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911405);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1788228150);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195490147);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1788714188);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 195911576);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 3497122649);
+    }
+
+    #[cfg_attr(feature = "unsynced-tests", test)]
+    fn xs_global_set_seed() {
+        let mut seed: [u8; 16] = [
+            0x12, 0x34, 0x56, 0x78,
+            0x90, 0xAB, 0xCD, 0xEF,
+            0x12, 0x34, 0x56, 0x78,
+            0x90, 0xAB, 0xCD, 0xEF,
+        ];
+
+        unsafe { sys::xs_seed_global(seed.as_mut_ptr()) }
+
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 4198859171);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 863685725);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2976477321);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2018915346);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2932402722);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 1261814658);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2971803477);
+        assert_eq!(unsafe { xs_global_u32(0, 0xFFFF_FFFF) }, 2015189959);
+    }
 }
