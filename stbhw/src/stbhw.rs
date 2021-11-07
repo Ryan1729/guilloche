@@ -10,7 +10,11 @@ pub struct ImageSize {
 
 impl ImageSize {
     fn alloc_pixels(&self) -> Vec<u8> {
-        vec![0; BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize]
+        vec![0; self.pixels_len()]
+    }
+
+    fn pixels_len(&self) -> usize {
+        BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize
     }
 }
 
@@ -281,6 +285,17 @@ pub struct Template {
     pixels: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct SizeMismatchError;
+
+impl core::fmt::Display for SizeMismatchError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Byte count implied by ImageSize did not match pixels length!")
+    }
+}
+
+impl std::error::Error for SizeMismatchError {}
+
 impl Template {
     pub fn size(&self) -> &ImageSize {
         &self.size
@@ -288,6 +303,17 @@ impl Template {
 
     pub fn pixels(&self) -> &[u8] {
         &self.pixels
+    }
+
+    pub fn new(size: ImageSize, pixels: Vec<u8>) -> Result<Self, SizeMismatchError> {
+        if size.pixels_len() != pixels.len() {
+            Err(SizeMismatchError)
+        } else {
+            Ok(Self {
+                size,
+                pixels,
+            })
+        }
     }
 }
 
