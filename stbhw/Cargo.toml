@@ -12,3 +12,6 @@ path = "./src/stbhw.rs"
 
 [build-dependencies]
 cc = "1.0"
+
+[features]
+unsynced-tests=[]
