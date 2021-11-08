@@ -525,10 +525,14 @@ type AnimationTimer = u16;
 /// We use this because it has a lot more varied factors than 65536.
 const ANIMATION_TIMER_LENGTH: AnimationTimer = 60 * 60 * 18;
 
+mod templates;
+use templates::Templates;
+
 #[derive(Debug, Default)]
 pub struct State {
     sizes: draw::Sizes,
     board: Board,
+    templates: Templates,
     animation_timer: AnimationTimer
 }
 

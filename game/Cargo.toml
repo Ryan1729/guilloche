@@ -8,6 +8,7 @@ edition = "2021"
 path = "./src/game.rs"
 
 [dependencies]
+stbhw = { path = "../stbhw"}
 
 [features]
 

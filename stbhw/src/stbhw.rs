@@ -13,7 +13,7 @@ impl ImageSize {
         vec![0; self.pixels_len()]
     }
 
-    fn pixels_len(&self) -> usize {
+    pub const fn pixels_len(&self) -> usize {
         BYTES_PER_PIXEL as usize * self.w as usize * self.h as usize
     }
 }
