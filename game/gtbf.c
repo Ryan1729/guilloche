@@ -3,9 +3,14 @@
 
 #define u8 unsigned char
 
-void write_bin(char* dest_path, u8* bytes) {
-    fprintf(stderr, "write_bin TODO\n");
-    exit(2);
+int write_bin(char* dest_path, u8* bytes, int byte_count) {
+    FILE *write_ptr = fopen(dest_path,"wb");  // w for write, b for binary
+
+    if (!write_ptr) {
+        return 0;
+    }
+
+    return fwrite(bytes, byte_count, 1, write_ptr);
 }
 
 void write_template_bins(
@@ -27,13 +32,22 @@ void write_template_bins(
         h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff, (h >> 24) & 0xff,
     };
 
-    write_bin(pixels_bin_dest_path, size);
-    write_bin(size_bin_dest_path, pixels);
+    int size_wrote_count = write_bin(size_bin_dest_path, size, 8);
+    if (size_wrote_count != 1) {
+        fprintf(stderr, "Couldn't write '%s'\n", size_bin_dest_path);
+        exit(2);
+    }
+
+    int pixels_wrote_count = write_bin(pixels_bin_dest_path, pixels, w * h * 3);
+    if (pixels_wrote_count != 1) {
+        fprintf(stderr, "Couldn't write '%s'\n", pixels_bin_dest_path);
+        exit(2);
+    }
 }
 
 int main(int argc, char **argv)
 {
-    write_template_bins("t1.png", "t1_size.bin", "t1_pixels.bin");
+    write_template_bins("t1.png", "src/t1_size.bin", "src/t1_pixels.bin");
 
     return 0;
 }
