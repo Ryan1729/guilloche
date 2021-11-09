@@ -3,7 +3,7 @@ pub struct Templates {
     // We expect to have multiple templates later. We can give this a better name
     // when we know better the distinction between different templates. If we end
     // up with only one template though, that won't be the end of the world.
-    t1: stbhw::Template,
+    pub t1: stbhw::Template,
 }
 
 const T1_SIZE: &[u8] = include_bytes!("t1_size.bin");

@@ -379,10 +379,12 @@ impl Default for WallColour {
 enum SpriteKindSpec {
     #[allow(unused)]
     Arrow,
+    #[allow(unused)]
     Wall,
 }
 
 impl SpriteKind {
+    #[allow(unused)]
     fn from_rng(rng: &mut Xs, spec: SpriteKindSpec) -> Self {
         use SpriteKindSpec::*;
         match spec {
@@ -406,6 +408,7 @@ struct TileData {
 }
 
 impl TileData {
+    #[allow(unused)]
     fn from_rng(rng: &mut Xs) -> Self {
         Self {
             sprite: SpriteKind::from_rng(rng, SpriteKindSpec::Wall),
@@ -426,6 +429,12 @@ struct Tile {
 
 pub const TILES_LENGTH: usize = tile::XY::COUNT as _;
 
+use stbhw::{ImageSize, Tileset};
+const CHUNK_SIZE: ImageSize = ImageSize {
+    w: tile::X::COUNT as _,
+    h: tile::Y::COUNT as _
+};
+
 type TileDataArray = [TileData; TILES_LENGTH as _];
 
 #[derive(Clone, Debug)]
@@ -442,11 +451,39 @@ impl Default for Tiles {
 }
 
 impl Tiles {
-    fn from_rng(rng: &mut Xs) -> Self {
+    fn from_rng(rng: &mut Xs, templates: &mut Templates) -> Self {
+        stbhw::xs_seed_global(new_seed(rng));
+
+        compile_time_assert!{
+            CHUNK_SIZE.pixels_len() / stbhw::BYTES_PER_PIXEL as usize
+            == TILES_LENGTH
+        }
+
+        let mut tileset = Tileset::from_template(&mut templates.t1).unwrap();
+
+        let map = tileset.generate_image(CHUNK_SIZE).unwrap().pixels;
+
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
 
-        for tile_data in tiles.iter_mut() {
-            *tile_data = TileData::from_rng(rng);
+        for i in 0..TILES_LENGTH {
+            use SpriteKind::*;
+            use WallStyle::*;
+            tiles[i] = TileData{
+                sprite: match 
+                    (map[i * stbhw::BYTES_PER_PIXEL as usize + 2] as usize)
+                     % (WallColour::COUNT * 2) 
+                {
+                    x if x / WallColour::COUNT == 0 => Wall(
+                        Smooth,
+                        WallColour::ALL[x % WallColour::COUNT]
+                    ),
+                    x if x / WallColour::COUNT == 1 => Wall(
+                        Rivet,
+                        WallColour::ALL[x % WallColour::COUNT]
+                    ),
+                    _ => Wall(<_>::default(), <_>::default()),
+                },
+            }
         }
 
         Self {
@@ -503,10 +540,10 @@ struct Board {
 }
 
 impl Board {
-    fn from_seed(seed: Seed) -> Self {
+    fn from_seed(seed: Seed, templates: &mut Templates) -> Self {
         let mut rng = xs_from_seed(seed);
 
-        let tiles = Tiles::from_rng(&mut rng);
+        let tiles = Tiles::from_rng(&mut rng, templates);
 
         Self {
             rng,
@@ -538,8 +575,11 @@ pub struct State {
 
 impl State {
     pub fn from_seed(seed: Seed) -> Self {
+        let mut templates = <_>::default();
+
         Self {
-            board: Board::from_seed(seed),
+            board: Board::from_seed(seed, &mut templates),
+            templates,
             ..<_>::default()
         }
     }
