@@ -428,10 +428,14 @@ struct Tile {
 
 pub const TILES_LENGTH: usize = tile::XY::COUNT as _;
 
+const TILES_PER_HW_SHORT_SIDE: u32 = 4;
+#[allow(unused)]
+const TILES_PER_HW_HALF_TILE: u32 = TILES_PER_HW_SHORT_SIDE * TILES_PER_HW_SHORT_SIDE;
+
 use stbhw::{ImageSize, Tileset};
 const CHUNK_SIZE: ImageSize = ImageSize {
-    w: tile::X::COUNT as _,
-    h: tile::Y::COUNT as _
+    w: (tile::X::COUNT / TILES_PER_HW_SHORT_SIDE) as _,
+    h: (tile::Y::COUNT / TILES_PER_HW_SHORT_SIDE) as _
 };
 
 type TileDataArray = [TileData; TILES_LENGTH as _];
@@ -455,7 +459,7 @@ impl Tiles {
 
         compile_time_assert!{
             CHUNK_SIZE.pixels_len() / stbhw::BYTES_PER_PIXEL as usize
-            == TILES_LENGTH
+            == TILES_LENGTH / TILES_PER_HW_HALF_TILE as usize
         }
 
         let mut tileset = Tileset::from_template(&mut templates.t1).unwrap();
@@ -464,24 +468,29 @@ impl Tiles {
 
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
 
-        for i in 0..TILES_LENGTH {
+        for (i, chunk) in map.chunks_exact(stbhw::BYTES_PER_PIXEL as _).enumerate() {
+            let blue = chunk[2];
             use SpriteKind::*;
             use WallStyle::*;
+            let sprite = match 
+                (blue as usize)
+                 % (WallColour::COUNT * 2) 
+            {
+                x if x / WallColour::COUNT == 0 => Wall(
+                    Smooth,
+                    WallColour::ALL[x % WallColour::COUNT]
+                ),
+                x if x / WallColour::COUNT == 1 => Wall(
+                    Rivet,
+                    WallColour::ALL[x % WallColour::COUNT]
+                ),
+                _ => Wall(<_>::default(), <_>::default()),
+            };
+
+            // TODO fill TILES_PER_HW_SHORT_SIDE by TILES_PER_HW_SHORT_SIDE
+            // tiles with the sprite instead.
             tiles[i] = TileData{
-                sprite: match 
-                    (map[i * stbhw::BYTES_PER_PIXEL as usize + 2] as usize)
-                     % (WallColour::COUNT * 2) 
-                {
-                    x if x / WallColour::COUNT == 0 => Wall(
-                        Smooth,
-                        WallColour::ALL[x % WallColour::COUNT]
-                    ),
-                    x if x / WallColour::COUNT == 1 => Wall(
-                        Rivet,
-                        WallColour::ALL[x % WallColour::COUNT]
-                    ),
-                    _ => Wall(<_>::default(), <_>::default()),
-                },
+                sprite,
             }
         }
 
