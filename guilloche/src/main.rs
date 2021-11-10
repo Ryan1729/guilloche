@@ -36,7 +36,7 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
     use game::WallStyle::*;
 
     let sx = match sprite {
-        NeutralEye 
+        NeutralEye
         | Arrow(_, Red)
         | SmallPupilEye
         | NarrowLeftEye
@@ -182,7 +182,7 @@ mod raylib_rs_platform {
         // out what to do if we get a smaller value than this.
 //        const RENDER_TARGET_SIZE: u32 = 8192;
         // On the other hand, 8192 makes my old intergrated graphics laptop overheat
-        // Maybe it would be faster/less hot to avoiding clearing the whole thing 
+        // Maybe it would be faster/less hot to avoiding clearing the whole thing
         // each frame?
         const RENDER_TARGET_SIZE: u32 = 2048;
 
@@ -195,15 +195,15 @@ mod raylib_rs_platform {
 
         let seed: u128 = {
             use std::time::SystemTime;
-    
-            let duration = match 
+
+            let duration = match
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
             {
                 Ok(d) => d,
                 Err(err) => err.duration(),
             };
-    
+
             duration.as_nanos()
         };
         println!("{}", seed);
@@ -295,7 +295,7 @@ mod raylib_rs_platform {
             if rl.is_key_pressed(KEY_UP) || rl.is_key_pressed(KEY_W) {
                 input_flags |= game::INPUT_UP_PRESSED;
             }
-            
+
             if rl.is_key_pressed(KEY_DOWN) || rl.is_key_pressed(KEY_S) {
                 input_flags |= game::INPUT_DOWN_PRESSED;
             }
@@ -355,23 +355,23 @@ mod raylib_rs_platform {
                     sizes.play_xywh.h as i32 + 2,
                     OUTLINE
                 );
-            
+
                 let tile_base_source_rect = Rectangle {
                     x: 0.,
                     y: 0.,
                     width: SPRITE_PIXELS_PER_TILE_SIDE,
                     height: SPRITE_PIXELS_PER_TILE_SIDE,
                 };
-    
+
                 let tile_base_render_rect = Rectangle {
                     x: 0.,
                     y: 0.,
                     width: sizes.tile_side_length,
                     height: sizes.tile_side_length,
                 };
-    
+
                 // I don't know why the texture lookup seems to be offset by these
-                // amounts, but it seems to be. This alos seems to have changed 
+                // amounts, but it seems to be. This also seems to have changed
                 // based in the size of the texture. Weird.
                 const X_SOURCE_FUDGE: f32 = 0.;
                 const Y_SOURCE_FUDGE: f32 = -1.;

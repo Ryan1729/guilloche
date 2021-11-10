@@ -226,7 +226,7 @@ mod tile {
     pub struct X(Coord);
 
     impl X {
-        pub const MAX: Coord = 0b1111;
+        pub const MAX: Coord = 0b0011_1111;
         pub const COUNT: Count = (X::MAX as Count) + 1;
 
         pub fn from_rng(rng: &mut Xs) -> Self {
@@ -252,7 +252,7 @@ mod tile {
     pub struct Y(Coord);
 
     impl Y {
-        pub const MAX: Coord = 0b1111;
+        pub const MAX: Coord = 0b0011_1111;
         pub const COUNT: Count = (Y::MAX as Count) + 1;
 
         pub fn from_rng(rng: &mut Xs) -> Self {
