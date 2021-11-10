@@ -140,7 +140,7 @@ pub mod draw;
 pub use draw::{
     DrawLength,
     DrawX,
-    DrawY, 
+    DrawY,
     DrawXY,
     DrawW,
     DrawH,
@@ -175,7 +175,7 @@ macro_rules! from_rng_enum_def {
             pub const ALL: [Self; Self::COUNT] = [
                 $(Self::$variants,)+
             ];
-        
+
             pub fn from_rng(rng: &mut Xs) -> Self {
                 Self::ALL[xs_u32(rng, 0, Self::ALL.len() as u32) as usize]
             }
@@ -322,7 +322,7 @@ mod tile {
                 (index % X::COUNT as usize) as Count
             )),
             y: Y(to_coord_or_default(
-                ((index % (XY::COUNT as usize) as usize) 
+                ((index % (XY::COUNT as usize) as usize)
                 / X::COUNT as usize) as Count
             )),
         }
@@ -397,7 +397,7 @@ impl SpriteKind {
     }
 }
 
-/// A Tile should always be at a particular position, but that position should be 
+/// A Tile should always be at a particular position, but that position should be
 /// derivable from the tiles location in the tiles array, so it doesn't need to be
 /// stored. But, we often want to get the tile's data and it's location as a single
 /// thing. This is why we have both `Tile` and `TileData`
@@ -426,16 +426,20 @@ struct Tile {
     data: TileData
 }
 
+pub const TILES_WIDTH: usize = tile::X::COUNT as _;
 pub const TILES_LENGTH: usize = tile::XY::COUNT as _;
 
-const TILES_PER_HW_SHORT_SIDE: u32 = 4;
+const TILES_PER_HW_SHORT_SIDE_U32: u32 = 1 << 3;
+const TILES_PER_HW_HALF_TILE_U32: u32 = TILES_PER_HW_SHORT_SIDE_U32 * TILES_PER_HW_SHORT_SIDE_U32;
+
+const TILES_PER_HW_SHORT_SIDE: usize = TILES_PER_HW_SHORT_SIDE_U32 as _;
 #[allow(unused)]
-const TILES_PER_HW_HALF_TILE: u32 = TILES_PER_HW_SHORT_SIDE * TILES_PER_HW_SHORT_SIDE;
+const TILES_PER_HW_HALF_TILE: usize = TILES_PER_HW_HALF_TILE_U32 as _;
 
 use stbhw::{ImageSize, Tileset};
 const CHUNK_SIZE: ImageSize = ImageSize {
-    w: (tile::X::COUNT / TILES_PER_HW_SHORT_SIDE) as _,
-    h: (tile::Y::COUNT / TILES_PER_HW_SHORT_SIDE) as _
+    w: (tile::X::COUNT / TILES_PER_HW_SHORT_SIDE_U32) as _,
+    h: (tile::Y::COUNT / TILES_PER_HW_SHORT_SIDE_U32) as _
 };
 
 type TileDataArray = [TileData; TILES_LENGTH as _];
@@ -459,7 +463,7 @@ impl Tiles {
 
         compile_time_assert!{
             CHUNK_SIZE.pixels_len() / stbhw::BYTES_PER_PIXEL as usize
-            == TILES_LENGTH / TILES_PER_HW_HALF_TILE as usize
+            == TILES_LENGTH / TILES_PER_HW_HALF_TILE
         }
 
         let mut tileset = Tileset::from_template(&mut templates.t1).unwrap();
@@ -468,13 +472,13 @@ impl Tiles {
 
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
 
-        for (i, chunk) in map.chunks_exact(stbhw::BYTES_PER_PIXEL as _).enumerate() {
+        for (pixel_i, chunk) in map.chunks_exact(stbhw::BYTES_PER_PIXEL as _).enumerate() {
             let blue = chunk[2];
             use SpriteKind::*;
             use WallStyle::*;
-            let sprite = match 
+            let sprite = match
                 (blue as usize)
-                 % (WallColour::COUNT * 2) 
+                 % (WallColour::COUNT * 2)
             {
                 x if x / WallColour::COUNT == 0 => Wall(
                     Smooth,
@@ -487,10 +491,25 @@ impl Tiles {
                 _ => Wall(<_>::default(), <_>::default()),
             };
 
-            // TODO fill TILES_PER_HW_SHORT_SIDE by TILES_PER_HW_SHORT_SIDE
-            // tiles with the sprite instead.
-            tiles[i] = TileData{
-                sprite,
+            // We want to map a single pixel to multiple tiles. We can picture this
+            // as a large pixel grid with tiles inside it.
+
+            let (px, py): (usize, usize) = (
+                pixel_i % CHUNK_SIZE.w as usize,
+                pixel_i / CHUNK_SIZE.w as usize
+            );
+
+            let upper_left_corner: usize =
+                (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
+                + px * TILES_PER_HW_SHORT_SIDE;
+
+            for y in 0..TILES_PER_HW_SHORT_SIDE {
+                for x in 0..TILES_PER_HW_SHORT_SIDE {
+                    let i = upper_left_corner + y * TILES_WIDTH + x;
+                    tiles[i] = TileData{
+                        sprite,
+                    }
+                }
             }
         }
 
