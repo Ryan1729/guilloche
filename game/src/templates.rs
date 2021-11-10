@@ -6,15 +6,24 @@ pub struct Templates {
     pub t1: stbhw::Template,
 }
 
-const T1_SIZE: &[u8] = include_bytes!("t1_size.bin");
+const T1_SIZE_BYTES: &[u8] = include_bytes!("t1_size.bin");
+const T1_SIZE: stbhw::ImageSize = size_from_bytes_or_minus_one(T1_SIZE_BYTES);
 const T1_PIXELS: &[u8] = include_bytes!("t1_pixels.bin");
 
 impl Default for Templates {
     fn default() -> Self {
-        // If these unwrap's panic, then the game is not going to work anyway.
-        // TODO Add compile-time asserts?
+        compile_time_assert!{
+            T1_SIZE.w > 0 && T1_SIZE.h > 0
+        }
+        compile_time_assert!{
+            stbhw::Template::pixel_len_matches(T1_SIZE, T1_PIXELS)
+        }
+
+        // If this unwrap panics, then the game is not going to work anyway.
+        // The `compile_time_assert`s above should prevent a panic to the 
+        // extent possible.
         let t1 = stbhw::Template::new(
-            size_from_bytes(T1_SIZE).unwrap(),
+            T1_SIZE,
             copy_bytes(T1_PIXELS),
         ).unwrap();
 
@@ -24,7 +33,7 @@ impl Default for Templates {
     }
 }
 
-fn size_from_bytes(size_bytes: &[u8]) -> Result<stbhw::ImageSize, ()> {
+const fn size_from_bytes(size_bytes: &[u8]) -> Result<stbhw::ImageSize, ()> {
     const BYTE_COUNT: u32 = stbhw::Int::BITS >> 3;
     if size_bytes.len() != (BYTE_COUNT * 2) as usize {
         Err(())
@@ -46,6 +55,13 @@ fn size_from_bytes(size_bytes: &[u8]) -> Result<stbhw::ImageSize, ()> {
             w,
             h,
         })
+    }
+}
+
+const fn size_from_bytes_or_minus_one(size_bytes: &[u8]) -> stbhw::ImageSize {
+    match size_from_bytes(size_bytes) {
+        Ok(size) => size,
+        Err(_) => stbhw::ImageSize{w: -1, h: -1},
     }
 }
 

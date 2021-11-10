@@ -1,10 +1,9 @@
 #![deny(unused)]
 #![deny(bindings_with_variant_name)]
 
-#[allow(unused)]
 macro_rules! compile_time_assert {
     ($assertion: expr) => {{
-        #[allow(unknown_lints, eq_op)]
+        #[allow(unknown_lints)]
         // Based on the const_assert macro from static_assertions;
         const _: [(); 0 - !{$assertion} as usize] = [];
     }}

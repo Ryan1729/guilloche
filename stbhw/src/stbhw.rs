@@ -305,14 +305,18 @@ impl Template {
         &self.pixels
     }
 
+    pub const fn pixel_len_matches(size: ImageSize, pixels: &[u8]) -> bool {
+        size.pixels_len() == pixels.len()
+    }
+
     pub fn new(size: ImageSize, pixels: Vec<u8>) -> Result<Self, SizeMismatchError> {
-        if size.pixels_len() != pixels.len() {
-            Err(SizeMismatchError)
-        } else {
+        if Self::pixel_len_matches(size, &pixels) {
             Ok(Self {
                 size,
                 pixels,
             })
+        } else {
+            Err(SizeMismatchError)
         }
     }
 }
