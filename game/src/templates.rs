@@ -4,11 +4,84 @@ pub struct Templates {
     // when we know better the distinction between different templates. If we end
     // up with only one template though, that won't be the end of the world.
     pub t1: stbhw::Template,
+    // Ditto for decks.
+    pub d1: Deck1,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileKind {
+    Floor,
+    Wall,
+    NPC,
+}
+
+impl Default for TileKind {
+    fn default() -> Self {
+        TileKind::Floor
+    }
+}
+
+counted_enum_def!{
+    EdgeType {
+        UpperLeft,
+        Upper,
+        UpperRight,
+        Left,
+        NoEdges,
+        Right,
+        LowerLeft,
+        Lower,
+        LowerRight,
+    }
+}
+
+impl From<EdgeType> for usize {
+    fn from(edge_type: EdgeType) -> Self {
+        let mut output = Self::MAX;
+
+        for i in 0..EdgeType::COUNT {
+            if EdgeType::ALL[i] == edge_type {
+                output = i;
+                break;
+            }
+        }
+        
+        output
+    }
+}
+
+pub use stbhw::BYTES_PER_PIXEL;
+
+pub const TILES_PER_HW_SHORT_SIDE_U32: u32 = 1 << 3;
+pub const TILES_PER_HW_HALF_TILE_U32: u32 = TILES_PER_HW_SHORT_SIDE_U32 * TILES_PER_HW_SHORT_SIDE_U32;
+
+pub const TILES_PER_HW_SHORT_SIDE: usize = TILES_PER_HW_SHORT_SIDE_U32 as _;
+pub const TILES_PER_HW_HALF_TILE: usize = TILES_PER_HW_HALF_TILE_U32 as _;
 
 const T1_SIZE_BYTES: &[u8] = include_bytes!("t1_size.bin");
 const T1_SIZE: stbhw::ImageSize = size_from_bytes_or_minus_one(T1_SIZE_BYTES);
 const T1_PIXELS: &[u8] = include_bytes!("t1_pixels.bin");
+
+const D1_SIZE_BYTES: &[u8] = include_bytes!("d1_size.bin");
+const D1_SIZE: stbhw::ImageSize = size_from_bytes_or_minus_one(D1_SIZE_BYTES);
+const D1_PIXELS: &[u8] = include_bytes!("d1_pixels.bin");
+
+const D1_CARD_SIZE: stbhw::ImageSize = stbhw::ImageSize {
+    w: TILES_PER_HW_SHORT_SIDE_U32 as _,
+    h: TILES_PER_HW_SHORT_SIDE_U32 as _,
+};
+const D1_CARD_LENGTH: usize = D1_CARD_SIZE.pixels_len();
+const D1_LENGTH: usize = D1_PIXELS.len();
+const D1_CARD_COUNT: usize = D1_LENGTH / D1_CARD_LENGTH;
+const D1_CARD_ROW_COUNT: usize = D1_CARD_COUNT / EdgeType::COUNT;
+
+/// We use a distinct type for Deck1 to make adding different deck types with
+/// different sizes later, easier.
+pub type Deck1 = [u8; D1_LENGTH];
+
+/// We use a distinct type for Deck1Card to make adding different deck types with
+/// different card sizes later, easier.
+pub type Deck1Card = [TileKind; D1_CARD_LENGTH];
 
 impl Default for Templates {
     fn default() -> Self {
@@ -27,9 +100,52 @@ impl Default for Templates {
             copy_bytes(T1_PIXELS),
         ).unwrap();
 
+        compile_time_assert!{
+            D1_SIZE.w > 0 && D1_SIZE.h > 0
+        }
+        compile_time_assert!{
+            stbhw::Template::pixel_len_matches(D1_SIZE, D1_PIXELS)
+        }
+        // This asserts that we didn't have an undersized last row of cards.
+        compile_time_assert!{
+            D1_CARD_COUNT * D1_CARD_LENGTH == D1_LENGTH
+        }
+
+        let mut d1 = [0; D1_LENGTH];
+
+        d1.copy_from_slice(D1_PIXELS);
+
         Self {
             t1,
+            d1,
         }
+    }
+}
+
+impl Templates {
+    pub fn d1_card(self, map_pixel: &[u8], edge_type: EdgeType) -> Deck1Card {
+        let map_tile_type = map_pixel[2];
+
+        // For each map_tile_type there are expected to be EdgeType::COUNT 
+        // cards, one for each edge type.
+        let base = (map_tile_type as usize % D1_CARD_ROW_COUNT)
+            * EdgeType::COUNT
+            + usize::from(edge_type);
+
+        let mut output: Deck1Card = [<_>::default(); D1_CARD_LENGTH];
+
+        let mut i = 0;
+        for chunk in self.d1[base..base + D1_CARD_LENGTH].chunks(BYTES_PER_PIXEL as _) {
+            use TileKind::*;
+            output[i] = match chunk[2] {
+                1 => Wall,
+                2 => NPC,
+                _ => Floor,
+            };
+            i += 1;
+        }
+
+        output
     }
 }
 

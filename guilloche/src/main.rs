@@ -55,6 +55,7 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         Wall(_, WallColour::Yellow) => 17.,
         Wall(_, WallColour::Orange) => 19.,
         Wall(_, WallColour::Brown) => 21.,
+        Floor => 2.,
     };
 
     let sy = match sprite {
@@ -83,6 +84,7 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         SmallPupilEye => 14.,
         Wall(Smooth, _) => 0.,
         Wall(Rivet, _) => 2.,
+        Floor => 15.,
     };
 
     SourceSpec {

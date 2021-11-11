@@ -150,7 +150,7 @@ pub use draw::{
     Sizes,
 };
 
-macro_rules! from_rng_enum_def {
+macro_rules! counted_enum_def {
     ($name: ident { $( $variants: ident ),+ $(,)? }) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum $name {
@@ -175,7 +175,20 @@ macro_rules! from_rng_enum_def {
             pub const ALL: [Self; Self::COUNT] = [
                 $(Self::$variants,)+
             ];
+        }
+    }
+}
 
+macro_rules! from_rng_enum_def {
+    ($name: ident { $( $variants: ident ),+ $(,)? }) => {
+        counted_enum_def!{
+            $name {
+                $( $variants ),+
+            }
+        }
+
+        impl $name {
+            #[allow(unused)]
             pub fn from_rng(rng: &mut Xs) -> Self {
                 Self::ALL[xs_u32(rng, 0, Self::ALL.len() as u32) as usize]
             }
@@ -403,20 +416,14 @@ impl SpriteKind {
 /// thing. This is why we have both `Tile` and `TileData`
 #[derive(Copy, Clone, Debug, Default)]
 struct TileData {
-    sprite: SpriteKind,
+    kind: templates::TileKind,
 }
 
 impl TileData {
-    #[allow(unused)]
-    fn from_rng(rng: &mut Xs) -> Self {
-        Self {
-            sprite: SpriteKind::from_rng(rng, SpriteKindSpec::Wall),
-        }
-    }
-
-    // TODO inline? We might end up deriving the sprite again, instead of storing it.
     fn sprite(&self) -> SpriteKind {
-        self.sprite
+        match self.kind {
+            
+        }
     }
 }
 
@@ -429,20 +436,13 @@ struct Tile {
 pub const TILES_WIDTH: usize = tile::X::COUNT as _;
 pub const TILES_LENGTH: usize = tile::XY::COUNT as _;
 
-const TILES_PER_HW_SHORT_SIDE_U32: u32 = 1 << 3;
-const TILES_PER_HW_HALF_TILE_U32: u32 = TILES_PER_HW_SHORT_SIDE_U32 * TILES_PER_HW_SHORT_SIDE_U32;
-
-const TILES_PER_HW_SHORT_SIDE: usize = TILES_PER_HW_SHORT_SIDE_U32 as _;
-#[allow(unused)]
-const TILES_PER_HW_HALF_TILE: usize = TILES_PER_HW_HALF_TILE_U32 as _;
+type TileDataArray = [TileData; TILES_LENGTH as _];
 
 use stbhw::{ImageSize, Tileset};
 const CHUNK_SIZE: ImageSize = ImageSize {
     w: (tile::X::COUNT / TILES_PER_HW_SHORT_SIDE_U32) as _,
     h: (tile::Y::COUNT / TILES_PER_HW_SHORT_SIDE_U32) as _
 };
-
-type TileDataArray = [TileData; TILES_LENGTH as _];
 
 #[derive(Clone, Debug)]
 pub struct Tiles {
@@ -472,24 +472,8 @@ impl Tiles {
 
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
 
-        for (pixel_i, chunk) in map.chunks_exact(stbhw::BYTES_PER_PIXEL as _).enumerate() {
-            let blue = chunk[2];
-            use SpriteKind::*;
-            use WallStyle::*;
-            let sprite = match
-                (blue as usize)
-                 % (WallColour::COUNT * 2)
-            {
-                x if x / WallColour::COUNT == 0 => Wall(
-                    Smooth,
-                    WallColour::ALL[x % WallColour::COUNT]
-                ),
-                x if x / WallColour::COUNT == 1 => Wall(
-                    Rivet,
-                    WallColour::ALL[x % WallColour::COUNT]
-                ),
-                _ => Wall(<_>::default(), <_>::default()),
-            };
+        for (pixel_i, chunk) in map.chunks_exact(templates::BYTES_PER_PIXEL as _).enumerate() {
+            use EdgeType::*;
 
             // We want to map a single pixel to multiple tiles. We can picture this
             // as a large pixel grid with tiles inside it.
@@ -499,15 +483,35 @@ impl Tiles {
                 pixel_i / CHUNK_SIZE.w as usize
             );
 
+            let edge_type = match (px, py) {
+                (0, 0) => UpperLeft,
+                (x, 0) if x < (CHUNK_SIZE.w - 1) as usize => Upper,
+                (_, 0) => UpperRight,
+                (0, y) if y < (CHUNK_SIZE.h - 1) as usize => Left,
+                (x, y) if 
+                    y < (CHUNK_SIZE.h - 1) as usize 
+                    && x < (CHUNK_SIZE.w - 1) as usize => NoEdges,
+                (_, y) if y < (CHUNK_SIZE.h - 1) as usize => Right,
+                (0, _) => LowerLeft,
+                (x, _) if x < (CHUNK_SIZE.w - 1) as usize => Lower,
+                (_, _) => LowerRight,
+            };
+
+            let card = templates.d1_card(
+                chunk,
+                edge_type
+            );
+
             let upper_left_corner: usize =
                 (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
                 + px * TILES_PER_HW_SHORT_SIDE;
 
             for y in 0..TILES_PER_HW_SHORT_SIDE {
                 for x in 0..TILES_PER_HW_SHORT_SIDE {
-                    let i = upper_left_corner + y * TILES_WIDTH + x;
-                    tiles[i] = TileData{
-                        sprite,
+                    let card_i = y * TILES_WIDTH + x;
+                    let tile_i = upper_left_corner + card_i;
+                    tiles[tile_i] = TileData{
+                        kind: card[card_i],
                     }
                 }
             }
@@ -590,7 +594,13 @@ type AnimationTimer = u16;
 const ANIMATION_TIMER_LENGTH: AnimationTimer = 60 * 60 * 18;
 
 mod templates;
-use templates::Templates;
+use templates::{
+    Templates,
+    EdgeType,
+    TILES_PER_HW_SHORT_SIDE,
+    TILES_PER_HW_HALF_TILE,
+    TILES_PER_HW_SHORT_SIDE_U32,
+};
 
 #[derive(Debug, Default)]
 pub struct State {

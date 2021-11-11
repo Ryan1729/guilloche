@@ -150,7 +150,8 @@ pub enum SpriteKind {
     NarrowRightEye,
     ClosedEye,
     HalfLidEye,
-    Wall(WallStyle, WallColour)
+    Wall(WallStyle, WallColour),
+    Floor,
 }
 
 impl Default for SpriteKind {
