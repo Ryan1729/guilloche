@@ -12,7 +12,7 @@ pub struct Templates {
 pub enum TileKind {
     Floor,
     Wall,
-    NPC,
+    Npc,
 }
 
 impl Default for TileKind {
@@ -56,6 +56,7 @@ pub const TILES_PER_HW_SHORT_SIDE_U32: u32 = 1 << 3;
 pub const TILES_PER_HW_HALF_TILE_U32: u32 = TILES_PER_HW_SHORT_SIDE_U32 * TILES_PER_HW_SHORT_SIDE_U32;
 
 pub const TILES_PER_HW_SHORT_SIDE: usize = TILES_PER_HW_SHORT_SIDE_U32 as _;
+#[allow(unused)]
 pub const TILES_PER_HW_HALF_TILE: usize = TILES_PER_HW_HALF_TILE_U32 as _;
 
 const T1_SIZE_BYTES: &[u8] = include_bytes!("t1_size.bin");
@@ -63,6 +64,7 @@ const T1_SIZE: stbhw::ImageSize = size_from_bytes_or_minus_one(T1_SIZE_BYTES);
 const T1_PIXELS: &[u8] = include_bytes!("t1_pixels.bin");
 
 const D1_SIZE_BYTES: &[u8] = include_bytes!("d1_size.bin");
+#[allow(unused)]
 const D1_SIZE: stbhw::ImageSize = size_from_bytes_or_minus_one(D1_SIZE_BYTES);
 const D1_PIXELS: &[u8] = include_bytes!("d1_pixels.bin");
 
@@ -70,7 +72,13 @@ const D1_CARD_SIZE: stbhw::ImageSize = stbhw::ImageSize {
     w: TILES_PER_HW_SHORT_SIDE_U32 as _,
     h: TILES_PER_HW_SHORT_SIDE_U32 as _,
 };
+
+pub const D1_CARD_W: usize = D1_CARD_SIZE.w as _;
+pub const D1_CARD_H: usize = D1_CARD_SIZE.h as _;
+
 const D1_CARD_LENGTH: usize = D1_CARD_SIZE.pixels_len();
+const D1_CARD_ROW_LENGTH: usize = D1_CARD_W * EdgeType::COUNT;
+const D1_ROW_OF_CARDS_LENGTH: usize = D1_CARD_LENGTH * EdgeType::COUNT;
 const D1_LENGTH: usize = D1_PIXELS.len();
 const D1_CARD_COUNT: usize = D1_LENGTH / D1_CARD_LENGTH;
 const D1_CARD_ROW_COUNT: usize = D1_CARD_COUNT / EdgeType::COUNT;
@@ -123,26 +131,35 @@ impl Default for Templates {
 }
 
 impl Templates {
-    pub fn d1_card(self, map_pixel: &[u8], edge_type: EdgeType) -> Deck1Card {
-        let map_tile_type = map_pixel[2];
+    pub fn d1_card(&self, map_pixel: &[u8], edge_type: EdgeType) -> Deck1Card {
+        let card_row = map_pixel[2];
+        dbg!(card_row);
 
         // For each map_tile_type there are expected to be EdgeType::COUNT 
         // cards, one for each edge type.
-        let base = (map_tile_type as usize % D1_CARD_ROW_COUNT)
-            * EdgeType::COUNT
-            + usize::from(edge_type);
+        let upper_left_corner = (card_row as usize % D1_CARD_ROW_COUNT)
+            * D1_ROW_OF_CARDS_LENGTH
+            + usize::from(edge_type) * D1_CARD_W;
 
         let mut output: Deck1Card = [<_>::default(); D1_CARD_LENGTH];
 
         let mut i = 0;
-        for chunk in self.d1[base..base + D1_CARD_LENGTH].chunks(BYTES_PER_PIXEL as _) {
-            use TileKind::*;
-            output[i] = match chunk[2] {
-                1 => Wall,
-                2 => NPC,
-                _ => Floor,
-            };
-            i += 1;
+        for y in 0..D1_CARD_H {
+            for x in 0..D1_CARD_W {
+                use TileKind::*;
+
+                let card_i = y * D1_CARD_ROW_LENGTH
+                    + x * BYTES_PER_PIXEL as usize;
+                let chunk_i = upper_left_corner + card_i;
+
+                output[i] = match self.d1[chunk_i + 2] {
+                    1 => Wall,
+                    2 => Npc,
+                    _ => Floor,
+                };
+
+                i += 1;
+            }
         }
 
         output

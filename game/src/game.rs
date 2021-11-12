@@ -421,8 +421,11 @@ struct TileData {
 
 impl TileData {
     fn sprite(&self) -> SpriteKind {
+        use templates::TileKind::*;
         match self.kind {
-            
+            Floor => SpriteKind::Floor,
+            Wall => SpriteKind::Wall(<_>::default(), <_>::default()),
+            Npc => SpriteKind::HalfLidEye,
         }
     }
 }
@@ -506,9 +509,9 @@ impl Tiles {
                 (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
                 + px * TILES_PER_HW_SHORT_SIDE;
 
-            for y in 0..TILES_PER_HW_SHORT_SIDE {
-                for x in 0..TILES_PER_HW_SHORT_SIDE {
-                    let card_i = y * TILES_WIDTH + x;
+            for y in 0..templates::D1_CARD_H {
+                for x in 0..templates::D1_CARD_W {
+                    let card_i = y * templates::D1_CARD_W + x;
                     let tile_i = upper_left_corner + card_i;
                     tiles[tile_i] = TileData{
                         kind: card[card_i],

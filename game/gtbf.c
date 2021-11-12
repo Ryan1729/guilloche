@@ -48,6 +48,7 @@ void write_template_bins(
 int main(int argc, char **argv)
 {
     write_template_bins("t1.png", "src/t1_size.bin", "src/t1_pixels.bin");
+    write_template_bins("d1.png", "src/d1_size.bin", "src/d1_pixels.bin");
 
     return 0;
 }
