@@ -1,4 +1,4 @@
 #!/bin/bash
 
 # Run clippy only if it is present, using clippy's status code if it is run.
-(! command -v cargo-clippy || time cargo clippy --workspace -- -D warnings; clippy_status=$) && time cargo test --workspace && time cargo doc --document-private-items
+(! command -v cargo-clippy || time cargo clippy --workspace -- -D warnings) && time cargo test --workspace && time cargo doc --document-private-items
