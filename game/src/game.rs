@@ -1,4 +1,4 @@
-#![deny(unused)]
+//#![deny(unused)]
 #![deny(bindings_with_variant_name)]
 
 macro_rules! compile_time_assert {
@@ -512,7 +512,7 @@ impl Tiles {
             for y in 0..templates::D1_CARD_H {
                 for x in 0..templates::D1_CARD_W {
                     let card_i = y * templates::D1_CARD_W + x;
-                    let tile_i = upper_left_corner + card_i;
+                    let tile_i = upper_left_corner + y * TILES_WIDTH + x;
                     tiles[tile_i] = TileData{
                         kind: card[card_i],
                     }
