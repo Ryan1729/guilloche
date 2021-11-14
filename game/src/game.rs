@@ -715,7 +715,7 @@ impl Input {
         } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
             Dir(DownLeft)
         } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
-            Dir(UpRight)
+            Dir(UpLeft)
         } else if INPUT_UP_DOWN & flags != 0 {
             Dir(Up)
         } else if INPUT_DOWN_DOWN & flags != 0 {
