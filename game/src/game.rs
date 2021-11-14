@@ -1,4 +1,4 @@
-//#![deny(unused)]
+#![deny(unused)]
 #![deny(bindings_with_variant_name)]
 
 macro_rules! compile_time_assert {
@@ -491,8 +491,8 @@ impl Tiles {
                 (x, 0) if x < (CHUNK_SIZE.w - 1) as usize => Upper,
                 (_, 0) => UpperRight,
                 (0, y) if y < (CHUNK_SIZE.h - 1) as usize => Left,
-                (x, y) if 
-                    y < (CHUNK_SIZE.h - 1) as usize 
+                (x, y) if
+                    y < (CHUNK_SIZE.h - 1) as usize
                     && x < (CHUNK_SIZE.w - 1) as usize => NoEdges,
                 (_, y) if y < (CHUNK_SIZE.h - 1) as usize => Right,
                 (0, _) => LowerLeft,
@@ -523,6 +523,12 @@ impl Tiles {
         Self {
             tiles
         }
+    }
+}
+
+impl Tiles {
+    fn in_wall(&self, xy: tile::XY) -> bool {
+        self.tiles[tile::xy_to_i(xy)].kind == templates::TileKind::Wall
     }
 }
 
@@ -587,6 +593,52 @@ impl Board {
                 ..<_>::default()
             },
         }
+    }
+}
+
+fn move_xy(xy: &mut tile::XY, dir: Dir) {
+    use Dir::*;
+
+    match dir {
+        Up => {
+            xy.move_up();
+        },
+        UpRight => {
+            xy.move_up();
+            xy.move_right();
+        },
+        Right => {
+            xy.move_right();
+        },
+        DownRight => {
+            xy.move_down();
+            xy.move_right();
+        },
+        Down => {
+            xy.move_down();
+        },
+        DownLeft => {
+            xy.move_down();
+            xy.move_left();
+        },
+        Left => {
+            xy.move_left();
+        },
+        UpLeft => {
+            xy.move_up();
+            xy.move_left();
+        },
+    }
+}
+
+fn attempt_walk(xy: &mut tile::XY, tiles: &Tiles, dir: Dir) {
+    let mut target = *xy;
+    move_xy(&mut target, dir);
+
+    // Let things already embedded in walls move so they can get out.
+    let can_pass = tiles.in_wall(*xy) || !tiles.in_wall(target);
+    if can_pass {
+        *xy = target;
     }
 }
 
@@ -696,7 +748,6 @@ pub fn update(
 
     use EyeState::*;
     use Input::*;
-    use crate::Dir::*;
 
     const HOLD_FRAMES: AnimationTimer = 30;
 
@@ -741,41 +792,9 @@ pub fn update(
                 }
             },
         },
-        Dir(Up) => {
-            state.board.eye.state = Moved(Up);
-            state.board.eye.xy.move_up();
-        },
-        Dir(UpRight) => {
-            state.board.eye.state = Moved(UpRight);
-            state.board.eye.xy.move_up();
-            state.board.eye.xy.move_right();
-        },
-        Dir(Right) => {
-            state.board.eye.state = Moved(Right);
-            state.board.eye.xy.move_right();
-        },
-        Dir(DownRight) => {
-            state.board.eye.state = Moved(DownRight);
-            state.board.eye.xy.move_down();
-            state.board.eye.xy.move_right();
-        },
-        Dir(Down) => {
-            state.board.eye.state = Moved(Down);
-            state.board.eye.xy.move_down();
-        },
-        Dir(DownLeft) => {
-            state.board.eye.state = Moved(DownLeft);
-            state.board.eye.xy.move_down();
-            state.board.eye.xy.move_left();
-        },
-        Dir(Left) => {
-            state.board.eye.state = Moved(Left);
-            state.board.eye.xy.x = state.board.eye.xy.x.saturating_sub_one();
-        },
-        Dir(UpLeft) => {
-            state.board.eye.state = Moved(UpLeft);
-            state.board.eye.xy.move_up();
-            state.board.eye.xy.move_left();
+        Dir(dir) => {
+            state.board.eye.state = Moved(dir);
+            attempt_walk(&mut state.board.eye.xy, &state.board.tiles, dir);
         },
         Interact => {
             state.board.eye.state = SmallPupil;

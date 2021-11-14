@@ -78,6 +78,7 @@ pub const D1_CARD_W: usize = D1_CARD_SIZE.w as _;
 pub const D1_CARD_H: usize = D1_CARD_SIZE.h as _;
 
 const D1_CARD_W_BYTES: usize = D1_CARD_W * BYTES_PER_PIXEL as usize;
+#[allow(unused)]
 const D1_CARD_H_BYTES: usize = D1_CARD_H * BYTES_PER_PIXEL as usize;
 
 const D1_CARD_LENGTH: usize = D1_CARD_SIZE.pixels_len();
