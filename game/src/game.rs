@@ -410,22 +410,34 @@ impl SpriteKind {
     }
 }
 
+from_rng_enum_def!{
+    TileKind {
+        Floor,
+        Wall,
+    }
+}
+
+impl Default for TileKind {
+    fn default() -> Self {
+        Self::Floor
+    }
+}
+
 /// A Tile should always be at a particular position, but that position should be
 /// derivable from the tiles location in the tiles array, so it doesn't need to be
 /// stored. But, we often want to get the tile's data and it's location as a single
 /// thing. This is why we have both `Tile` and `TileData`
 #[derive(Copy, Clone, Debug, Default)]
 struct TileData {
-    kind: templates::TileKind,
+    kind: TileKind,
 }
 
 impl TileData {
     fn sprite(&self) -> SpriteKind {
-        use templates::TileKind::*;
+        use TileKind::*;
         match self.kind {
             Floor => SpriteKind::Floor,
             Wall => SpriteKind::Wall(<_>::default(), <_>::default()),
-            Npc => SpriteKind::HalfLidEye,
         }
     }
 }
@@ -447,15 +459,49 @@ const CHUNK_SIZE: ImageSize = ImageSize {
     h: (tile::Y::COUNT / TILES_PER_HW_SHORT_SIDE_U32) as _
 };
 
+const TILE_GROUP_W: usize = CHUNK_SIZE.w as _;
+const TILE_GROUP_H: usize = CHUNK_SIZE.h as _;
+const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Quest {
+    xy: tile::XY,
+}
+
+impl Quest {
+    fn sprite(&self) -> SpriteKind {
+        // Later we expect the sprite to change based on state. For example,
+        // to indicate quest progress.
+        SpriteKind::HalfLidEye
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Npc {
+    Nobody,
+    Quest(Quest)
+}
+
+impl Default for Npc {
+    fn default() -> Self {
+        Self::Nobody
+    }
+}
+
+const MAX_NPCS_PER_GROUP: u8 = 2;
+const MAX_NPCS_PER_CHUNK: usize = TILE_GROUP_COUNT * MAX_NPCS_PER_GROUP as usize;
+
 #[derive(Clone, Debug)]
 pub struct Tiles {
     tiles: TileDataArray,
+    npcs: [Npc; MAX_NPCS_PER_CHUNK],
 }
 
 impl Default for Tiles {
     fn default() -> Self {
         Self {
             tiles: [TileData::default(); TILES_LENGTH as _],
+            npcs: [Npc::default(); MAX_NPCS_PER_CHUNK],
         }
     }
 }
@@ -474,6 +520,8 @@ impl Tiles {
         let map = tileset.generate_image(CHUNK_SIZE).unwrap().pixels;
 
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
+        let mut npcs = [Npc::default(); MAX_NPCS_PER_CHUNK];
+        let mut next_npc_index = 0;
 
         for (pixel_i, chunk) in map.chunks_exact(templates::BYTES_PER_PIXEL as _).enumerate() {
             use EdgeType::*;
@@ -509,26 +557,52 @@ impl Tiles {
                 (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
                 + px * TILES_PER_HW_SHORT_SIDE;
 
+            let mut pushed_npc_count: u8 = 0;
             for y in 0..templates::D1_CARD_H {
                 for x in 0..templates::D1_CARD_W {
                     let card_i = y * templates::D1_CARD_W + x;
                     let tile_i = upper_left_corner + y * TILES_WIDTH + x;
+
+                    use TileKind::*;
+
+                    let kind = match card[card_i] {
+                        templates::TileKind::Floor => Floor,
+                        templates::TileKind::Wall => Wall,
+                        templates::TileKind::Npc => {
+                            if pushed_npc_count < MAX_NPCS_PER_GROUP
+                            && xs_u32(rng, 0, 4) == 0 {
+                                if npcs.get(next_npc_index) == Some(&Npc::Nobody) {
+                                    npcs[next_npc_index] = Npc::Quest(Quest {
+                                        xy: tile::i_to_xy(tile_i),
+                                    });
+
+                                    next_npc_index += 1;
+                                }
+                                pushed_npc_count += 1;
+                            }
+
+
+                            Floor
+                        }
+                    };
+
                     tiles[tile_i] = TileData{
-                        kind: card[card_i],
+                        kind,
                     }
                 }
             }
         }
 
         Self {
-            tiles
+            tiles,
+            npcs,
         }
     }
 }
 
 impl Tiles {
     fn in_wall(&self, xy: tile::XY) -> bool {
-        self.tiles[tile::xy_to_i(xy)].kind == templates::TileKind::Wall
+        self.tiles[tile::xy_to_i(xy)].kind == TileKind::Wall
     }
 }
 
@@ -810,6 +884,18 @@ pub fn update(
             sprite: tile_data.sprite(),
             xy: draw_xy_from_tile(&state.sizes, txy),
         }));
+    }
+
+    for npc in state.board.tiles.npcs {
+        match npc {
+            Npc::Nobody => break,
+            Npc::Quest(quest) => {
+                commands.push(Sprite(SpriteSpec{
+                    sprite: quest.sprite(),
+                    xy: draw_xy_from_tile(&state.sizes, quest.xy),
+                }));
+            },
+        }
     }
 
     commands.push(Sprite(SpriteSpec{
