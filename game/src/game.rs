@@ -570,6 +570,7 @@ impl Tiles {
                         templates::TileKind::Wall => Wall,
                         templates::TileKind::Npc => {
                             if pushed_npc_count < MAX_NPCS_PER_GROUP
+                            // TODO Does this bias towards particular patterns?
                             && xs_u32(rng, 0, 4) == 0 {
                                 if npcs.get(next_npc_index) == Some(&Npc::Nobody) {
                                     npcs[next_npc_index] = Npc::Quest(Quest {
