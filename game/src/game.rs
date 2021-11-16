@@ -605,6 +605,18 @@ impl Tiles {
     fn in_wall(&self, xy: tile::XY) -> bool {
         self.tiles[tile::xy_to_i(xy)].kind == TileKind::Wall
     }
+
+    fn is_walkable(&self, xy: tile::XY) -> bool {
+        self.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor
+        && !self.npcs.iter().any(|npc|
+            match npc {
+                Npc::Nobody => false,
+                Npc::Quest(quest) => {
+                    quest.xy == xy
+                },
+            }
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -711,7 +723,8 @@ fn attempt_walk(xy: &mut tile::XY, tiles: &Tiles, dir: Dir) {
     move_xy(&mut target, dir);
 
     // Let things already embedded in walls move so they can get out.
-    let can_pass = tiles.in_wall(*xy) || !tiles.in_wall(target);
+    let can_pass = tiles.in_wall(*xy)
+        || tiles.is_walkable(target);
     if can_pass {
         *xy = target;
     }
