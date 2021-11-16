@@ -468,14 +468,6 @@ struct Quest {
     xy: tile::XY,
 }
 
-impl Quest {
-    fn sprite(&self) -> SpriteKind {
-        // Later we expect the sprite to change based on state. For example,
-        // to indicate quest progress.
-        SpriteKind::HalfLidEye
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Npc {
     Nobody,
@@ -619,7 +611,7 @@ impl Tiles {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EyeState {
     Idle,
     Moved(Dir),
@@ -651,19 +643,102 @@ impl EyeState {
             HalfLid => SpriteKind::HalfLidEye,
         }
     }
+
+    fn idle_tick(&mut self, animation_timer: AnimationTimer) {
+        use EyeState::*;
+        match *self {
+            Idle => {
+                if animation_timer % (HOLD_FRAMES * 3) == 0 {
+                    *self = NarrowAnimCenter;
+                }
+            },
+            Moved(_) => {
+                if animation_timer % HOLD_FRAMES == 0 {
+                    *self = Idle;
+                }
+            },
+            SmallPupil => {
+                if animation_timer % (HOLD_FRAMES * 3) == 0 {
+                    *self = Closed;
+                }
+            },
+            Closed => {
+                if animation_timer % (HOLD_FRAMES) == 0 {
+                    *self = HalfLid;
+                }
+            },
+            HalfLid => {
+                if animation_timer % (HOLD_FRAMES * 5) == 0 {
+                    *self = Idle;
+                }
+            },
+            NarrowAnimCenter => {
+                let modulus = animation_timer % (HOLD_FRAMES * 4);
+                if modulus == 0 {
+                    *self = NarrowAnimRight;
+                } else if modulus == HOLD_FRAMES * 2 {
+                    *self = NarrowAnimLeft;
+                }
+            },
+            NarrowAnimLeft | NarrowAnimRight => {
+                if animation_timer % HOLD_FRAMES == 0 {
+                    *self = NarrowAnimCenter;
+                }
+            },
+        }
+    }
+
+    fn prod(&mut self) {
+        *self = Self::SmallPupil;
+    }
 }
 
-#[derive(Debug, Default)]
-struct Eye {
-    xy: tile::XY,
-    state: EyeState,
+// 64k entities ought to be enough for anybody!
+type Entity = u16;
+
+const NPC_ENTITY_MIN: Entity = 0;
+const NPC_ENTITY_MAX: Entity = (MAX_NPCS_PER_CHUNK as Entity) - 1;
+compile_time_assert!{ MAX_NPCS_PER_CHUNK < Entity::MAX as usize }
+const PLAYER_ENTITY: Entity = NPC_ENTITY_MAX + 1;
+const ENTITY_COUNT: usize = PLAYER_ENTITY as usize + 1;
+
+#[derive(Debug)]
+struct EyeStates([EyeState; ENTITY_COUNT]);
+
+impl Default for EyeStates {
+    fn default() -> Self {
+        Self([<_>::default(); ENTITY_COUNT])
+    }
+}
+
+
+impl core::ops::Index<Entity> for EyeStates {
+    type Output = EyeState;
+
+    fn index(&self, entity: Entity) -> &Self::Output {
+        self.0.index(entity as usize)
+    }
+}
+
+
+impl core::ops::IndexMut<Entity> for EyeStates {
+    fn index_mut(&mut self, entity: Entity) -> &mut Self::Output {
+        self.0.index_mut(entity as usize)
+    }
+}
+
+impl EyeStates {
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut EyeState> {
+        self.0.iter_mut()
+    }
 }
 
 #[derive(Debug, Default)]
 struct Board {
     rng: Xs,
     tiles: Tiles,
-    eye: Eye,
+    player_xy: tile::XY,
+    eye_states: EyeStates,
 }
 
 impl Board {
@@ -675,10 +750,8 @@ impl Board {
         Self {
             rng,
             tiles,
-            eye: Eye {
-                xy: tile::XY::from_rng(&mut rng),
-                ..<_>::default()
-            },
+            player_xy: tile::XY::from_rng(&mut rng),
+            .. <_>::default()
         }
     }
 }
@@ -735,6 +808,8 @@ type AnimationTimer = u16;
 
 /// We use this because it has a lot more varied factors than 65536.
 const ANIMATION_TIMER_LENGTH: AnimationTimer = 60 * 60 * 18;
+
+const HOLD_FRAMES: AnimationTimer = 30;
 
 mod templates;
 use templates::{
@@ -837,55 +912,18 @@ pub fn update(
     use EyeState::*;
     use Input::*;
 
-    const HOLD_FRAMES: AnimationTimer = 30;
+    for e_s in state.board.eye_states.iter_mut() {
+        e_s.idle_tick(state.animation_timer);
+    }
 
     match input {
-        NoChange => match state.board.eye.state {
-            Idle => {
-                if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
-                    state.board.eye.state = NarrowAnimCenter;
-                }
-            },
-            Moved(_) => {
-                if state.animation_timer % HOLD_FRAMES == 0 {
-                    state.board.eye.state = Idle;
-                }
-            },
-            SmallPupil => {
-                if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
-                    state.board.eye.state = Closed;
-                }
-            },
-            Closed => {
-                if state.animation_timer % (HOLD_FRAMES) == 0 {
-                    state.board.eye.state = HalfLid;
-                }
-            },
-            HalfLid => {
-                if state.animation_timer % (HOLD_FRAMES * 5) == 0 {
-                    state.board.eye.state = Idle;
-                }
-            },
-            NarrowAnimCenter => {
-                let modulus = state.animation_timer % (HOLD_FRAMES * 4);
-                if modulus == 0 {
-                    state.board.eye.state = NarrowAnimRight;
-                } else if modulus == HOLD_FRAMES * 2 {
-                    state.board.eye.state = NarrowAnimLeft;
-                }
-            },
-            NarrowAnimLeft | NarrowAnimRight => {
-                if state.animation_timer % HOLD_FRAMES == 0 {
-                    state.board.eye.state = NarrowAnimCenter;
-                }
-            },
-        },
+        NoChange => {},
         Dir(dir) => {
-            state.board.eye.state = Moved(dir);
-            attempt_walk(&mut state.board.eye.xy, &state.board.tiles, dir);
+            state.board.eye_states[PLAYER_ENTITY] = Moved(dir);
+            attempt_walk(&mut state.board.player_xy, &state.board.tiles, dir);
         },
         Interact => {
-            state.board.eye.state = SmallPupil;
+            state.board.eye_states[PLAYER_ENTITY].prod();
         },
     }
 
@@ -900,12 +938,12 @@ pub fn update(
         }));
     }
 
-    for npc in state.board.tiles.npcs {
-        match npc {
+    for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+        match state.board.tiles.npcs[i as usize] {
             Npc::Nobody => break,
             Npc::Quest(quest) => {
                 commands.push(Sprite(SpriteSpec{
-                    sprite: quest.sprite(),
+                    sprite: state.board.eye_states[i].sprite(),
                     xy: draw_xy_from_tile(&state.sizes, quest.xy),
                 }));
             },
@@ -913,8 +951,8 @@ pub fn update(
     }
 
     commands.push(Sprite(SpriteSpec{
-        sprite: state.board.eye.state.sprite(),
-        xy: draw_xy_from_tile(&state.sizes, state.board.eye.xy),
+        sprite: state.board.eye_states[PLAYER_ENTITY].sprite(),
+        xy: draw_xy_from_tile(&state.sizes, state.board.player_xy),
     }));
 
     let left_text_x = state.sizes.play_xywh.x + MARGIN;
