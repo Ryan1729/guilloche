@@ -2,11 +2,11 @@
 #![deny(bindings_with_variant_name)]
 
 macro_rules! compile_time_assert {
-    ($assertion: expr) => {{
+    ($assertion: expr) => {
         #[allow(unknown_lints)]
         // Based on the const_assert macro from static_assertions;
         const _: [(); 0 - !{$assertion} as usize] = [];
-    }}
+    }
 }
 
 // In case we decide that we care about no_std/not directly allocating ourself
