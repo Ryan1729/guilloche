@@ -320,6 +320,56 @@ mod tile {
         }
     }
 
+    impl XY {
+        pub fn is_adjacent_to(&self, xy: Self) -> bool {
+            // Who cares about a few extra clones here?
+            macro_rules! check {
+                ($($method: ident),+ $(,)?) => {
+                    let mut current = xy.clone();
+                    $(current.$method();)*
+                    if current == *self { return true }
+                }
+            }
+            check!(move_up, move_left);
+            check!(move_up);
+            check!(move_up, move_right);
+            check!(move_left);
+            check!(move_right);
+            check!(move_down, move_left);
+            check!(move_down);
+            check!(move_down, move_right);
+
+            false
+        }
+    }
+
+    #[test]
+    fn is_adjacent_to_works_on_this_example() {
+        let x0 = X::default();
+        let x1 = x0.saturating_add_one();
+        let x2 = x1.saturating_add_one();
+
+        let y0 = Y::default();
+        let y1 = y0.saturating_add_one();
+        let y2 = y1.saturating_add_one();
+
+        let xy = XY { x: x1, y: y1 };
+
+        assert!(xy.is_adjacent_to(XY { x: x0, y: y0 }));
+        assert!(xy.is_adjacent_to(XY { x: x1, y: y0 }));
+        assert!(xy.is_adjacent_to(XY { x: x2, y: y0 }));
+
+        assert!(xy.is_adjacent_to(XY { x: x0, y: y1 }));
+        assert!(!xy.is_adjacent_to(xy));
+        assert!(xy.is_adjacent_to(XY { x: x2, y: y1 }));
+
+        assert!(xy.is_adjacent_to(XY { x: x0, y: y2 }));
+        assert!(xy.is_adjacent_to(XY { x: x1, y: y2 }));
+        assert!(xy.is_adjacent_to(XY { x: x2, y: y2 }));
+
+        assert!(!xy.is_adjacent_to(XY { x: x2.saturating_add_one(), y: y2 }));
+    }
+
     #[allow(unused)]
     pub fn xy_to_i(xy: XY) -> usize {
         xy_to_i_usize((usize::from(xy.x.0), usize::from(xy.y.0)))
@@ -465,7 +515,7 @@ const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Quest {
-    xy: tile::XY,
+    //TODO quest data like what the goal is.
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -486,128 +536,13 @@ const MAX_NPCS_PER_CHUNK: usize = TILE_GROUP_COUNT * MAX_NPCS_PER_GROUP as usize
 #[derive(Clone, Debug)]
 pub struct Tiles {
     tiles: TileDataArray,
-    npcs: [Npc; MAX_NPCS_PER_CHUNK],
 }
 
 impl Default for Tiles {
     fn default() -> Self {
         Self {
             tiles: [TileData::default(); TILES_LENGTH as _],
-            npcs: [Npc::default(); MAX_NPCS_PER_CHUNK],
         }
-    }
-}
-
-impl Tiles {
-    fn from_rng(rng: &mut Xs, templates: &mut Templates) -> Self {
-        stbhw::xs_seed_global(new_seed(rng));
-
-        compile_time_assert!{
-            CHUNK_SIZE.pixels_len() / stbhw::BYTES_PER_PIXEL as usize
-            == TILES_LENGTH / TILES_PER_HW_HALF_TILE
-        }
-
-        let mut tileset = Tileset::from_template(&mut templates.t1).unwrap();
-
-        let map = tileset.generate_image(CHUNK_SIZE).unwrap().pixels;
-
-        let mut tiles = [TileData::default(); TILES_LENGTH as _];
-        let mut npcs = [Npc::default(); MAX_NPCS_PER_CHUNK];
-        let mut next_npc_index = 0;
-
-        for (pixel_i, chunk) in map.chunks_exact(templates::BYTES_PER_PIXEL as _).enumerate() {
-            use EdgeType::*;
-
-            // We want to map a single pixel to multiple tiles. We can picture this
-            // as a large pixel grid with tiles inside it.
-
-            let (px, py): (usize, usize) = (
-                pixel_i % CHUNK_SIZE.w as usize,
-                pixel_i / CHUNK_SIZE.w as usize
-            );
-
-            let edge_type = match (px, py) {
-                (0, 0) => UpperLeft,
-                (x, 0) if x < (CHUNK_SIZE.w - 1) as usize => Upper,
-                (_, 0) => UpperRight,
-                (0, y) if y < (CHUNK_SIZE.h - 1) as usize => Left,
-                (x, y) if
-                    y < (CHUNK_SIZE.h - 1) as usize
-                    && x < (CHUNK_SIZE.w - 1) as usize => NoEdges,
-                (_, y) if y < (CHUNK_SIZE.h - 1) as usize => Right,
-                (0, _) => LowerLeft,
-                (x, _) if x < (CHUNK_SIZE.w - 1) as usize => Lower,
-                (_, _) => LowerRight,
-            };
-
-            let card = templates.d1_card(
-                chunk,
-                edge_type
-            );
-
-            let upper_left_corner: usize =
-                (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
-                + px * TILES_PER_HW_SHORT_SIDE;
-
-            let mut pushed_npc_count: u8 = 0;
-            for y in 0..templates::D1_CARD_H {
-                for x in 0..templates::D1_CARD_W {
-                    let card_i = y * templates::D1_CARD_W + x;
-                    let tile_i = upper_left_corner + y * TILES_WIDTH + x;
-
-                    use TileKind::*;
-
-                    let kind = match card[card_i] {
-                        templates::TileKind::Floor => Floor,
-                        templates::TileKind::Wall => Wall,
-                        templates::TileKind::Npc => {
-                            if pushed_npc_count < MAX_NPCS_PER_GROUP
-                            // TODO Does this bias towards particular patterns?
-                            && xs_u32(rng, 0, 4) == 0 {
-                                if npcs.get(next_npc_index) == Some(&Npc::Nobody) {
-                                    npcs[next_npc_index] = Npc::Quest(Quest {
-                                        xy: tile::i_to_xy(tile_i),
-                                    });
-
-                                    next_npc_index += 1;
-                                }
-                                pushed_npc_count += 1;
-                            }
-
-
-                            Floor
-                        }
-                    };
-
-                    tiles[tile_i] = TileData{
-                        kind,
-                    }
-                }
-            }
-        }
-
-        Self {
-            tiles,
-            npcs,
-        }
-    }
-}
-
-impl Tiles {
-    fn in_wall(&self, xy: tile::XY) -> bool {
-        self.tiles[tile::xy_to_i(xy)].kind == TileKind::Wall
-    }
-
-    fn is_walkable(&self, xy: tile::XY) -> bool {
-        self.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor
-        && !self.npcs.iter().any(|npc|
-            match npc {
-                Npc::Nobody => false,
-                Npc::Quest(quest) => {
-                    quest.xy == xy
-                },
-            }
-        )
     }
 }
 
@@ -702,34 +637,68 @@ compile_time_assert!{ MAX_NPCS_PER_CHUNK < Entity::MAX as usize }
 const PLAYER_ENTITY: Entity = NPC_ENTITY_MAX + 1;
 const ENTITY_COUNT: usize = PLAYER_ENTITY as usize + 1;
 
+macro_rules! component_def {
+    ($name: ident([$type: path; ENTITY_COUNT])) => {
+        #[derive(Debug)]
+        struct $name([$type; ENTITY_COUNT]);
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self([<_>::default(); ENTITY_COUNT])
+            }
+        }
+
+        impl core::ops::Index<Entity> for $name {
+            type Output = $type;
+
+            fn index(&self, entity: Entity) -> &Self::Output {
+                self.0.index(entity as usize)
+            }
+        }
+
+        impl core::ops::IndexMut<Entity> for $name {
+            fn index_mut(&mut self, entity: Entity) -> &mut Self::Output {
+                self.0.index_mut(entity as usize)
+            }
+        }
+
+        impl $name {
+            #[allow(unused)]
+            fn iter_mut(&mut self) -> impl Iterator<Item = &mut $type> {
+                self.0.iter_mut()
+            }
+        }
+    }
+}
+
+component_def!{
+    EyeStates([EyeState; ENTITY_COUNT])
+}
+
+component_def!{
+    XYs([tile::XY; ENTITY_COUNT])
+}
+
 #[derive(Debug)]
-struct EyeStates([EyeState; ENTITY_COUNT]);
+struct Npcs([Npc; MAX_NPCS_PER_CHUNK]);
 
-impl Default for EyeStates {
+impl Default for Npcs {
     fn default() -> Self {
-        Self([<_>::default(); ENTITY_COUNT])
+        Self([<_>::default(); MAX_NPCS_PER_CHUNK])
     }
 }
 
+impl core::ops::Index<usize> for Npcs {
+    type Output = Npc;
 
-impl core::ops::Index<Entity> for EyeStates {
-    type Output = EyeState;
-
-    fn index(&self, entity: Entity) -> &Self::Output {
-        self.0.index(entity as usize)
+    fn index(&self, i: usize) -> &Self::Output {
+        self.0.index(i)
     }
 }
 
-
-impl core::ops::IndexMut<Entity> for EyeStates {
-    fn index_mut(&mut self, entity: Entity) -> &mut Self::Output {
-        self.0.index_mut(entity as usize)
-    }
-}
-
-impl EyeStates {
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut EyeState> {
-        self.0.iter_mut()
+impl core::ops::IndexMut<usize> for Npcs {
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
+        self.0.index_mut(i)
     }
 }
 
@@ -737,21 +706,145 @@ impl EyeStates {
 struct Board {
     rng: Xs,
     tiles: Tiles,
-    player_xy: tile::XY,
+    npcs: Npcs,
+    xys: XYs,
     eye_states: EyeStates,
+}
+
+macro_rules! player_xy {
+    ($board: expr) => {
+        $board.xys[PLAYER_ENTITY]
+    }
 }
 
 impl Board {
     fn from_seed(seed: Seed, templates: &mut Templates) -> Self {
         let mut rng = xs_from_seed(seed);
 
-        let tiles = Tiles::from_rng(&mut rng, templates);
+        let mut xys = XYs::default();
+        xys[PLAYER_ENTITY] = tile::XY::from_rng(&mut rng);
+
+        stbhw::xs_seed_global(new_seed(&mut rng));
+
+        compile_time_assert!{
+            CHUNK_SIZE.pixels_len() / stbhw::BYTES_PER_PIXEL as usize
+            == TILES_LENGTH / TILES_PER_HW_HALF_TILE
+        }
+
+        let mut tileset = Tileset::from_template(&mut templates.t1).unwrap();
+
+        let map = tileset.generate_image(CHUNK_SIZE).unwrap().pixels;
+
+        let mut tiles = [TileData::default(); TILES_LENGTH as _];
+        let mut npcs = Npcs::default();
+        let mut next_npc_index = NPC_ENTITY_MIN;
+        // We currently rely on the coversion from entiy to NPC index being merely
+        // a cast.
+        compile_time_assert!(NPC_ENTITY_MIN == 0);
+
+        for (pixel_i, chunk) in map.chunks_exact(templates::BYTES_PER_PIXEL as _).enumerate() {
+            use EdgeType::*;
+
+            // We want to map a single pixel to multiple tiles. We can picture this
+            // as a large pixel grid with tiles inside it.
+
+            let (px, py): (usize, usize) = (
+                pixel_i % CHUNK_SIZE.w as usize,
+                pixel_i / CHUNK_SIZE.w as usize
+            );
+
+            let edge_type = match (px, py) {
+                (0, 0) => UpperLeft,
+                (x, 0) if x < (CHUNK_SIZE.w - 1) as usize => Upper,
+                (_, 0) => UpperRight,
+                (0, y) if y < (CHUNK_SIZE.h - 1) as usize => Left,
+                (x, y) if
+                    y < (CHUNK_SIZE.h - 1) as usize
+                    && x < (CHUNK_SIZE.w - 1) as usize => NoEdges,
+                (_, y) if y < (CHUNK_SIZE.h - 1) as usize => Right,
+                (0, _) => LowerLeft,
+                (x, _) if x < (CHUNK_SIZE.w - 1) as usize => Lower,
+                (_, _) => LowerRight,
+            };
+
+            let card = templates.d1_card(
+                chunk,
+                edge_type
+            );
+
+            let upper_left_corner: usize =
+                (py * TILES_WIDTH * TILES_PER_HW_SHORT_SIDE)
+                + px * TILES_PER_HW_SHORT_SIDE;
+
+            let mut pushed_npc_count: u8 = 0;
+            for y in 0..templates::D1_CARD_H {
+                for x in 0..templates::D1_CARD_W {
+                    let card_i = y * templates::D1_CARD_W + x;
+                    let tile_i = upper_left_corner + y * TILES_WIDTH + x;
+
+                    use TileKind::*;
+
+                    let kind = match card[card_i] {
+                        templates::TileKind::Floor => Floor,
+                        templates::TileKind::Wall => Wall,
+                        templates::TileKind::Npc => {
+                            if pushed_npc_count < MAX_NPCS_PER_GROUP
+                            // TODO Does this bias towards particular patterns?
+                            && xs_u32(&mut rng, 0, 4) == 0 {
+                                compile_time_assert!(NPC_ENTITY_MAX < Entity::MAX);
+                                if next_npc_index <= NPC_ENTITY_MAX
+                                && npcs[next_npc_index as _] == Npc::Nobody {
+                                    npcs[next_npc_index as _] = Npc::Quest(Quest {
+                                    });
+
+                                    xys[next_npc_index] = tile::i_to_xy(tile_i);
+
+                                    next_npc_index = next_npc_index.saturating_add(1);
+                                }
+                                pushed_npc_count += 1;
+                            }
+
+
+                            Floor
+                        }
+                    };
+
+                    tiles[tile_i] = TileData{
+                        kind,
+                    }
+                }
+            }
+        }
 
         Self {
             rng,
-            tiles,
-            player_xy: tile::XY::from_rng(&mut rng),
+            tiles: Tiles { tiles },
+            npcs,
+            xys,
             .. <_>::default()
+        }
+    }
+}
+
+impl Board {
+    fn in_wall(&self, xy: tile::XY) -> bool {
+        self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Wall
+    }
+
+    fn is_walkable(&self, xy: tile::XY) -> bool {
+        if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
+            for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                match self.npcs[i as _] {
+                    Npc::Nobody => {},
+                    Npc::Quest(_) => if self.xys[i] == xy {
+                        return false;
+                    },
+                }
+            }
+
+            true
+        } else {
+            false
         }
     }
 }
@@ -788,18 +881,6 @@ fn move_xy(xy: &mut tile::XY, dir: Dir) {
             xy.move_up();
             xy.move_left();
         },
-    }
-}
-
-fn attempt_walk(xy: &mut tile::XY, tiles: &Tiles, dir: Dir) {
-    let mut target = *xy;
-    move_xy(&mut target, dir);
-
-    // Let things already embedded in walls move so they can get out.
-    let can_pass = tiles.in_wall(*xy)
-        || tiles.is_walkable(target);
-    if can_pass {
-        *xy = target;
     }
 }
 
@@ -920,10 +1001,33 @@ pub fn update(
         NoChange => {},
         Dir(dir) => {
             state.board.eye_states[PLAYER_ENTITY] = Moved(dir);
-            attempt_walk(&mut state.board.player_xy, &state.board.tiles, dir);
+
+            let mut target = player_xy!(state.board);
+            move_xy(&mut target, dir);
+
+            // Let things already embedded in walls move so they can get out.
+            let can_pass = state.board.in_wall(player_xy!(state.board))
+                || state.board.is_walkable(target);
+            if can_pass {
+                player_xy!(state.board) = target;
+            }
         },
         Interact => {
             state.board.eye_states[PLAYER_ENTITY].prod();
+
+            let player_xy = player_xy!(state.board);
+
+            for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                dbg!(
+                    entity,
+                    state.board.xys[entity],
+                    player_xy,
+                    state.board.xys[entity].is_adjacent_to(player_xy),
+                );
+                if state.board.xys[entity].is_adjacent_to(player_xy) {
+                    state.board.eye_states[entity].prod();
+                }
+            }
         },
     }
 
@@ -939,12 +1043,12 @@ pub fn update(
     }
 
     for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-        match state.board.tiles.npcs[i as usize] {
+        match state.board.npcs[i as usize] {
             Npc::Nobody => break,
-            Npc::Quest(quest) => {
+            Npc::Quest(_) => {
                 commands.push(Sprite(SpriteSpec{
                     sprite: state.board.eye_states[i].sprite(),
-                    xy: draw_xy_from_tile(&state.sizes, quest.xy),
+                    xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },
         }
@@ -952,7 +1056,7 @@ pub fn update(
 
     commands.push(Sprite(SpriteSpec{
         sprite: state.board.eye_states[PLAYER_ENTITY].sprite(),
-        xy: draw_xy_from_tile(&state.sizes, state.board.player_xy),
+        xy: draw_xy_from_tile(&state.sizes, player_xy!(state.board)),
     }));
 
     let left_text_x = state.sizes.play_xywh.x + MARGIN;
