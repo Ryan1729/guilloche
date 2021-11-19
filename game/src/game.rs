@@ -849,7 +849,11 @@ impl Board {
     }
 }
 
-fn move_xy(xy: &mut tile::XY, dir: Dir) {
+type MoveVariant = u8;
+
+const MAX_MOVE_VARIANT: MoveVariant = 2;
+
+fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
     use Dir::*;
 
     match dir {
@@ -857,29 +861,71 @@ fn move_xy(xy: &mut tile::XY, dir: Dir) {
             xy.move_up();
         },
         UpRight => {
-            xy.move_up();
-            xy.move_right();
+            // TODO Prefer either up or right based on whether the user inputted Up
+            // first or Right first? And do the same for DownRight, etc.
+            match variant {
+                0 => {
+                    xy.move_up();
+                    xy.move_right();
+                },
+                1 => {
+                    xy.move_up();
+                },
+                _ => {
+                    xy.move_right();
+                }
+            }
         },
         Right => {
             xy.move_right();
         },
         DownRight => {
-            xy.move_down();
-            xy.move_right();
+            match variant {
+                0 => {
+                    xy.move_down();
+                    xy.move_right();
+                },
+                1 => {
+                    xy.move_down();
+                },
+                _ => {
+                    xy.move_right();
+                }
+            }
         },
         Down => {
             xy.move_down();
         },
         DownLeft => {
-            xy.move_down();
-            xy.move_left();
+            match variant {
+                0 => {
+                    xy.move_down();
+                    xy.move_left();
+                },
+                1 => {
+                    xy.move_down();
+                },
+                _ => {
+                    xy.move_left();
+                }
+            }
         },
         Left => {
             xy.move_left();
         },
         UpLeft => {
-            xy.move_up();
-            xy.move_left();
+            match variant {
+                0 => {
+                    xy.move_up();
+                    xy.move_left();
+                },
+                1 => {
+                    xy.move_up();
+                },
+                _ => {
+                    xy.move_left();
+                }
+            }
         },
     }
 }
@@ -1002,14 +1048,20 @@ pub fn update(
         Dir(dir) => {
             state.board.eye_states[PLAYER_ENTITY] = Moved(dir);
 
-            let mut target = player_xy!(state.board);
-            move_xy(&mut target, dir);
+            let pxy = player_xy!(state.board);
+            let mut target = pxy;
 
-            // Let things already embedded in walls move so they can get out.
-            let can_pass = state.board.in_wall(player_xy!(state.board))
-                || state.board.is_walkable(target);
-            if can_pass {
-                player_xy!(state.board) = target;
+            for i in 0..=MAX_MOVE_VARIANT {
+                move_xy(&mut target, dir, i);
+
+                // Let things already embedded in walls move so they can get out.
+                let can_pass = state.board.in_wall(player_xy!(state.board))
+                    || state.board.is_walkable(target);
+                if can_pass {
+                    player_xy!(state.board) = target;
+                    break;
+                }
+                target = pxy;
             }
         },
         Interact => {
