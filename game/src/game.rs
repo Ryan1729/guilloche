@@ -513,9 +513,16 @@ const TILE_GROUP_W: usize = CHUNK_SIZE.w as _;
 const TILE_GROUP_H: usize = CHUNK_SIZE.h as _;
 const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 
+type ItemId = u8;
+
+const NO_ITEM: ItemId = 0;
+
+const MAX_WANT_COUNT: usize = 2;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Trade {
-    
+    wants: [ItemId; MAX_WANT_COUNT],
+    offer: ItemId
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -714,12 +721,23 @@ struct Board {
 fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     debug_assert!(active_npcs.len() <= MAX_NPCS_PER_CHUNK);
 
-    let quests: [Trade; MAX_NPCS_PER_CHUNK] = [
-        Trade {}; MAX_NPCS_PER_CHUNK
+    // TODO: Make a quest module and a Quest abstract data type with a limited
+    // amount of public operations, that allow building up a list of trades. The
+    // set of operations should guarentee that the quest is solvable by
+    // construction. (Make the starting quest solvable, and ensure the operations do not break
+    // solvability.)
+    // Then convert the Quest into a list of NPCs and trust ourselves not to modify
+    // the list later.
+    let trades: [Trade; MAX_NPCS_PER_CHUNK] = [
+        Trade {
+            wants: [NO_ITEM; MAX_WANT_COUNT],
+            offer: NO_ITEM,
+        };
+        MAX_NPCS_PER_CHUNK
     ];
 
     for i in 0..active_npcs.len() {
-        active_npcs[i] = Npc::Trade(quests[i]);
+        active_npcs[i] = Npc::Trade(trades[i]);
     }
 
     xs_shuffle(rng, active_npcs);
