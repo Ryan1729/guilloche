@@ -711,6 +711,20 @@ struct Board {
     eye_states: EyeStates,
 }
 
+fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
+    debug_assert!(active_npcs.len() <= MAX_NPCS_PER_CHUNK);
+
+    let quests: [Quest; MAX_NPCS_PER_CHUNK] = [
+        Quest {}; MAX_NPCS_PER_CHUNK
+    ];
+
+    for i in 0..active_npcs.len() {
+        active_npcs[i] = Npc::Quest(quests[i]);
+    }
+
+    xs_shuffle(rng, active_npcs);
+}
+
 macro_rules! player_xy {
     ($board: expr) => {
         $board.xys[PLAYER_ENTITY]
@@ -794,9 +808,6 @@ impl Board {
                                 compile_time_assert!(NPC_ENTITY_MAX < Entity::MAX);
                                 if next_npc_index <= NPC_ENTITY_MAX
                                 && npcs[next_npc_index as _] == Npc::Nobody {
-                                    npcs[next_npc_index as _] = Npc::Quest(Quest {
-                                    });
-
                                     xys[next_npc_index] = tile::i_to_xy(tile_i);
 
                                     next_npc_index = next_npc_index.saturating_add(1);
@@ -815,6 +826,10 @@ impl Board {
                 }
             }
         }
+
+        let active_npcs = &mut npcs.0[0..next_npc_index as usize];
+
+        populate_npcs(&mut rng, active_npcs);
 
         Self {
             rng,
