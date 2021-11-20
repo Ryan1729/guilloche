@@ -514,14 +514,14 @@ const TILE_GROUP_H: usize = CHUNK_SIZE.h as _;
 const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Quest {
-    //TODO quest data like what the goal is.
+struct Trade {
+    
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Npc {
     Nobody,
-    Quest(Quest)
+    Trade(Trade)
 }
 
 impl Default for Npc {
@@ -714,12 +714,12 @@ struct Board {
 fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     debug_assert!(active_npcs.len() <= MAX_NPCS_PER_CHUNK);
 
-    let quests: [Quest; MAX_NPCS_PER_CHUNK] = [
-        Quest {}; MAX_NPCS_PER_CHUNK
+    let quests: [Trade; MAX_NPCS_PER_CHUNK] = [
+        Trade {}; MAX_NPCS_PER_CHUNK
     ];
 
     for i in 0..active_npcs.len() {
-        active_npcs[i] = Npc::Quest(quests[i]);
+        active_npcs[i] = Npc::Trade(quests[i]);
     }
 
     xs_shuffle(rng, active_npcs);
@@ -851,7 +851,7 @@ impl Board {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i as _] {
                     Npc::Nobody => {},
-                    Npc::Quest(_) => if self.xys[i] == xy {
+                    Npc::Trade(_) => if self.xys[i] == xy {
                         return false;
                     },
                 }
@@ -1106,7 +1106,7 @@ pub fn update(
     for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
         match state.board.npcs[i as usize] {
             Npc::Nobody => break,
-            Npc::Quest(_) => {
+            Npc::Trade(_) => {
                 commands.push(Sprite(SpriteSpec{
                     sprite: state.board.eye_states[i].sprite(),
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
