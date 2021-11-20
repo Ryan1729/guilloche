@@ -1085,12 +1085,6 @@ pub fn update(
             let player_xy = player_xy!(state.board);
 
             for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                dbg!(
-                    entity,
-                    state.board.xys[entity],
-                    player_xy,
-                    state.board.xys[entity].is_adjacent_to(player_xy),
-                );
                 if state.board.xys[entity].is_adjacent_to(player_xy) {
                     state.board.eye_states[entity].prod();
                 }
