@@ -513,10 +513,35 @@ const TILE_GROUP_W: usize = CHUNK_SIZE.w as _;
 const TILE_GROUP_H: usize = CHUNK_SIZE.h as _;
 const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 
+/// Given that all items come from NPCs, and at most 1 item is received from each
+/// NPC, then the maximum possible number of items per chunk is loosely bounded by
+/// the MAX_NPCS_PER_CHUNK. The reserved NO_ITEM does count too, bu
+const MAX_ITEM_TYPES_PER_CHUNK: usize = MAX_NPCS_PER_CHUNK;
+
 type ItemId = u8;
+compile_time_assert!(ItemId::MAX as usize >= MAX_ITEM_TYPES_PER_CHUNK);
 
 const NO_ITEM: ItemId = 0;
+const FIRST_ITEM_ID: ItemId = 1;
+/// No `- 1` since the reserved `NO_ITEM` cancels it out.
+const LAST_ITEM_ID: ItemId = MAX_ITEM_TYPES_PER_CHUNK as ItemId;
 const THE_MACGUFFIN: ItemId = ItemId::MAX;
+
+type InventoryBits = u128;
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+struct Inventory {
+    bits: InventoryBits,
+}
+
+compile_time_assert!(InventoryBits::BITS as usize >= MAX_ITEM_TYPES_PER_CHUNK);
+
+impl Inventory {
+    fn contains(&self, id: ItemId) -> bool {
+        compile_time_assert!(NO_ITEM == 0);
+        id != NO_ITEM// && self.bits & (1 << (id - 1)) != 0
+    }
+}
 
 const MAX_WANT_COUNT: usize = 2;
 
@@ -785,6 +810,7 @@ struct Board {
     npcs: Npcs,
     xys: XYs,
     eye_states: EyeStates,
+    inventory: Inventory
 }
 
 macro_rules! player_xy {
@@ -1103,6 +1129,7 @@ pub fn update(
     input_flags: InputFlags,
     draw_wh: DrawWH,
 ) {
+    #[allow(unused)]
     use draw::{TextSpec, TextKind, Command::*};
 
     if draw_wh != state.sizes.draw_wh {
@@ -1182,6 +1209,33 @@ pub fn update(
         xy: draw_xy_from_tile(&state.sizes, player_xy!(state.board)),
     }));
 
+    type PreDrawUint = u16;
+    const INVENTORY_COLUMNS_COUNT: PreDrawUint = 2;
+    for i in FIRST_ITEM_ID..=LAST_ITEM_ID {
+        if state.board.inventory.contains(i) {
+            let inventory_offset = i as PreDrawUint - FIRST_ITEM_ID as PreDrawUint;
+            let x_offset = (inventory_offset % INVENTORY_COLUMNS_COUNT)
+                // Space the columns a half-tile apart from the grid and each other
+                as DrawLength * 1.5 + 0.5;
+            let y_offset = (inventory_offset / INVENTORY_COLUMNS_COUNT)
+                as DrawLength;
+            let xy = DrawXY {
+                x: state.sizes.board_xywh.x + state.sizes.board_xywh.w
+                    + (x_offset * state.sizes.tile_side_length),
+                y: state.sizes.board_xywh.y
+                    + (y_offset * state.sizes.tile_side_length),
+            };
+
+            commands.push(Sprite(SpriteSpec{
+                // TODO create new sprite variant, including adding sprite images.
+                sprite: state.board.eye_states[PLAYER_ENTITY].sprite(),
+                xy,
+            }));
+        }
+    }
+
+    // TODO make this debug text toggleable?
+    /*
     let left_text_x = state.sizes.play_xywh.x + MARGIN;
 
     const MARGIN: f32 = 16.;
@@ -1220,6 +1274,7 @@ pub fn update(
             kind: TextKind::UI,
         }));
     }
+    */
 
     state.animation_timer += 1;
     if state.animation_timer >= ANIMATION_TIMER_LENGTH {
