@@ -516,10 +516,79 @@ const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 type ItemId = u8;
 
 const NO_ITEM: ItemId = 0;
+const THE_MACGUFFIN: ItemId = ItemId::MAX;
 
 const MAX_WANT_COUNT: usize = 2;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
+    let len = active_npcs.len();
+    debug_assert!(len <= MAX_NPCS_PER_CHUNK);
+
+    let mut items = [NO_ITEM; MAX_NPCS_PER_CHUNK];
+    compile_time_assert!(MAX_NPCS_PER_CHUNK - 1 <= ItemId::MAX as usize);
+    for (i, item) in items.iter_mut().enumerate() {
+        *item = i as ItemId;
+    }
+    xs_shuffle(rng, &mut items);
+    // Since we manually set `trades[trade_i]` to offer `THE_MACGUFFIN`, `items[0]`
+    // will never be read after this point.
+
+    let mut trades = [Trade::default(); MAX_NPCS_PER_CHUNK];
+    let mut trade_i = 0;
+    trades[trade_i] = Trade {
+        wants: [NO_ITEM; MAX_WANT_COUNT],
+        offer: THE_MACGUFFIN,
+    };
+    trade_i += 1;
+
+    while trade_i < len {
+        let added_item = items[trade_i];
+
+        let (extended_trade_i, want_i) = {
+            let offset = xs_u32(rng, 0, trade_i as u32) as usize;
+
+            let mut extended_trade_i = 0;
+            let mut want_i = 0;
+            let mut found = false;
+
+            'outer: for base_i in 0..trade_i {
+                let randomized_i = (base_i + offset) % trade_i;
+
+                for i in 0..MAX_WANT_COUNT {
+                    if trades[randomized_i].wants[i] == NO_ITEM {
+                        extended_trade_i = randomized_i;
+                        want_i = i;
+                        found = true;
+                        break 'outer;
+                    }
+                }
+            }
+
+            // We start with a set of trades with `MAX_WANT_COUNT` `NO_ITEM` wants,
+            // and each time we add a trade we only set one of those to a random
+            // item, so this should always succeed, unless there is a bug.
+            assert!(found);
+
+            (extended_trade_i, want_i)
+        };
+
+        trades[extended_trade_i].wants[want_i] = added_item;
+
+        trades[trade_i] = Trade {
+            wants: [NO_ITEM; MAX_WANT_COUNT],
+            offer: added_item,
+        };
+        trade_i += 1;
+    }
+
+    for i in 0..active_npcs.len() {
+        active_npcs[i] = Npc::Trade(trades[i]);
+    }
+
+    xs_shuffle(rng, active_npcs);
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Trade {
     wants: [ItemId; MAX_WANT_COUNT],
     offer: ItemId
@@ -716,31 +785,6 @@ struct Board {
     npcs: Npcs,
     xys: XYs,
     eye_states: EyeStates,
-}
-
-fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
-    debug_assert!(active_npcs.len() <= MAX_NPCS_PER_CHUNK);
-
-    // TODO: Make a quest module and a Quest abstract data type with a limited
-    // amount of public operations, that allow building up a list of trades. The
-    // set of operations should guarentee that the quest is solvable by
-    // construction. (Make the starting quest solvable, and ensure the operations do not break
-    // solvability.)
-    // Then convert the Quest into a list of NPCs and trust ourselves not to modify
-    // the list later.
-    let trades: [Trade; MAX_NPCS_PER_CHUNK] = [
-        Trade {
-            wants: [NO_ITEM; MAX_WANT_COUNT],
-            offer: NO_ITEM,
-        };
-        MAX_NPCS_PER_CHUNK
-    ];
-
-    for i in 0..active_npcs.len() {
-        active_npcs[i] = Npc::Trade(trades[i]);
-    }
-
-    xs_shuffle(rng, active_npcs);
 }
 
 macro_rules! player_xy {
