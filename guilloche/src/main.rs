@@ -33,7 +33,10 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
     use ArrowKind::*;
     use Dir::*;
     use SpriteKind::*;
-    use game::WallStyle::*;
+    use game::{FIRST_ITEM_ID, LAST_ITEM_ID, WallStyle::*};
+
+    const BLANK_X: f32 = 2.;
+    const BLANK_Y: f32 = 15.;
 
     let sx = match sprite {
         NeutralEye
@@ -55,7 +58,9 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         Wall(_, WallColour::Yellow) => 17.,
         Wall(_, WallColour::Orange) => 19.,
         Wall(_, WallColour::Brown) => 21.,
-        Floor => 2.,
+        Floor => BLANK_X,
+        Item(id) if !(FIRST_ITEM_ID..=LAST_ITEM_ID).contains(&id) => BLANK_X,
+        Item(id) => 16. + ((id - FIRST_ITEM_ID) / 8) as f32,
     };
 
     let sy = match sprite {
@@ -84,7 +89,9 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         SmallPupilEye => 14.,
         Wall(Smooth, _) => 0.,
         Wall(Rivet, _) => 2.,
-        Floor => 15.,
+        Floor => BLANK_Y,
+        Item(id) if !(FIRST_ITEM_ID..=LAST_ITEM_ID).contains(&id) => BLANK_Y,
+        Item(id) => 8. + ((id - FIRST_ITEM_ID) % 8) as f32,
     };
 
     SourceSpec {

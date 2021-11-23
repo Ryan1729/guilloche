@@ -137,7 +137,7 @@ pub fn fresh_sizes(wh: DrawWH) -> Sizes {
     }
 }
 
-use crate::{ArrowKind, Dir, WallStyle, WallColour};
+use crate::{ArrowKind, Dir, ItemId, WallStyle, WallColour};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpriteKind {
@@ -152,6 +152,7 @@ pub enum SpriteKind {
     HalfLidEye,
     Wall(WallStyle, WallColour),
     Floor,
+    Item(ItemId)
 }
 
 impl Default for SpriteKind {

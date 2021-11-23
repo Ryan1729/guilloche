@@ -518,14 +518,14 @@ const TILE_GROUP_COUNT: usize = TILE_GROUP_W * TILE_GROUP_H;
 /// the MAX_NPCS_PER_CHUNK. The reserved NO_ITEM does count too, bu
 const MAX_ITEM_TYPES_PER_CHUNK: usize = MAX_NPCS_PER_CHUNK;
 
-type ItemId = u8;
+pub type ItemId = u8;
 compile_time_assert!(ItemId::MAX as usize >= MAX_ITEM_TYPES_PER_CHUNK);
 
-const NO_ITEM: ItemId = 0;
-const FIRST_ITEM_ID: ItemId = 1;
+pub const NO_ITEM: ItemId = 0;
+pub const FIRST_ITEM_ID: ItemId = 1;
 /// No `- 1` since the reserved `NO_ITEM` cancels it out.
-const LAST_ITEM_ID: ItemId = MAX_ITEM_TYPES_PER_CHUNK as ItemId;
-const THE_MACGUFFIN: ItemId = ItemId::MAX;
+pub const LAST_ITEM_ID: ItemId = MAX_ITEM_TYPES_PER_CHUNK as ItemId;
+const THE_MACGUFFIN: ItemId = LAST_ITEM_ID;
 
 type InventoryBits = u128;
 
@@ -539,7 +539,8 @@ compile_time_assert!(InventoryBits::BITS as usize >= MAX_ITEM_TYPES_PER_CHUNK);
 impl Inventory {
     fn contains(&self, id: ItemId) -> bool {
         compile_time_assert!(NO_ITEM == 0);
-        id != NO_ITEM && self.bits & (1 << (id - 1)) != 0
+        // FIXME uncomment once done testing rendering
+        id != NO_ITEM// && self.bits & (1 << (id - 1)) != 0
     }
 }
 
@@ -1227,8 +1228,7 @@ pub fn update(
             };
 
             commands.push(Sprite(SpriteSpec{
-                // TODO create new sprite variant, including adding sprite images.
-                sprite: state.board.eye_states[PLAYER_ENTITY].sprite(),
+                sprite: SpriteKind::Item(i as ItemId),
                 xy,
             }));
         }
