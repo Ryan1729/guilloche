@@ -539,8 +539,7 @@ compile_time_assert!(InventoryBits::BITS as usize >= MAX_ITEM_TYPES_PER_CHUNK);
 impl Inventory {
     fn contains(&self, id: ItemId) -> bool {
         compile_time_assert!(NO_ITEM == 0);
-        // FIXME uncomment once done testing rendering
-        id != NO_ITEM// && self.bits & (1 << (id - 1)) != 0
+        id != NO_ITEM && self.bits & (1 << (id - 1)) != 0
     }
 }
 
