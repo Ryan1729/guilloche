@@ -381,9 +381,13 @@ mod raylib_rs_platform {
 
                 // I don't know why the texture lookup seems to be offset by these
                 // amounts, but it seems to be. This also seems to have changed
-                // based in the size of the texture. Weird.
+                // based on the size of the texture. Weird.
+                // Edit: Okay wait, now that I've actually used the maximum corner
+                // of the texture, now the proper fudge amount is zero?! Maybe
+                // there's something trying to save space and is shrinking the
+                // texture, based o what parts are non-transparent? Bizarre.
                 const X_SOURCE_FUDGE: f32 = 0.;
-                const Y_SOURCE_FUDGE: f32 = -1.;
+                const Y_SOURCE_FUDGE: f32 = 0.;
 
                 for cmd in commands.0.iter() {
                     use game::draw::Command::*;

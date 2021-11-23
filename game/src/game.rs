@@ -1211,15 +1211,18 @@ pub fn update(
     }));
 
     type PreDrawUint = u16;
-    const INVENTORY_COLUMNS_COUNT: PreDrawUint = 2;
+    const INVENTORY_COLUMNS_COUNT: PreDrawUint = 4;
     for i in FIRST_ITEM_ID..=LAST_ITEM_ID {
         if state.board.inventory.contains(i) {
             let inventory_offset = i as PreDrawUint - FIRST_ITEM_ID as PreDrawUint;
             let x_offset = (inventory_offset % INVENTORY_COLUMNS_COUNT)
-                // Space the columns a half-tile apart from the grid and each other
-                as DrawLength * 1.5 + 0.5;
+                // Space the columns a half-tile apart from the grid and a tile apart
+                // from each other
+                as DrawLength * 2. + 0.5;
             let y_offset = (inventory_offset / INVENTORY_COLUMNS_COUNT)
-                as DrawLength;
+                // Space the rows a half-tile apart from the top of the grid and a
+                // tile apart from each other
+                as DrawLength * 2. + 0.5;
             let xy = DrawXY {
                 x: state.sizes.board_xywh.x + state.sizes.board_xywh.w
                     + (x_offset * state.sizes.tile_side_length),
