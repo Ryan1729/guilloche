@@ -321,6 +321,7 @@ mod tile {
     }
 
     impl XY {
+        #[allow(unused)]
         pub fn is_adjacent_to(&self, xy: Self) -> bool {
             // Who cares about a few extra clones here?
             macro_rules! check {
@@ -803,6 +804,41 @@ impl core::ops::IndexMut<usize> for Npcs {
     }
 }
 
+impl core::ops::Index<Entity> for Npcs {
+    type Output = Npc;
+
+    fn index(&self, i: Entity) -> &Self::Output {
+        self.0.index(i as usize)
+    }
+}
+
+impl core::ops::IndexMut<Entity> for Npcs {
+    fn index_mut(&mut self, i: Entity) -> &mut Self::Output {
+        self.0.index_mut(i as usize)
+    }
+}
+
+#[derive(Debug)]
+enum Speech {
+    Silence,
+    Trade(Trade),
+}
+
+impl Default for Speech {
+    fn default() -> Self {
+        Self::Silence
+    }
+}
+
+impl From<Npc> for Speech {
+    fn from(npc: Npc) -> Self {
+        match npc {
+            Npc::Nobody => Self::Silence,
+            Npc::Trade(trade) => Self::Trade(trade),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Board {
     rng: Xs,
@@ -810,7 +846,8 @@ struct Board {
     npcs: Npcs,
     xys: XYs,
     eye_states: EyeStates,
-    inventory: Inventory
+    inventory: Inventory,
+    speech: Speech,
 }
 
 macro_rules! player_xy {
@@ -895,7 +932,7 @@ impl Board {
                             && xs_u32(&mut rng, 0, 4) == 0 {
                                 compile_time_assert!(NPC_ENTITY_MAX < Entity::MAX);
                                 if next_npc_index <= NPC_ENTITY_MAX
-                                && npcs[next_npc_index as _] == Npc::Nobody {
+                                && npcs[next_npc_index] == Npc::Nobody {
                                     xys[next_npc_index] = tile::i_to_xy(tile_i);
 
                                     next_npc_index = next_npc_index.saturating_add(1);
@@ -937,7 +974,7 @@ impl Board {
     fn is_walkable(&self, xy: tile::XY) -> bool {
         if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                match self.npcs[i as _] {
+                match self.npcs[i] {
                     Npc::Nobody => {},
                     Npc::Trade(_) => if self.xys[i] == xy {
                         return false;
@@ -954,6 +991,7 @@ impl Board {
 
 type MoveVariant = u8;
 
+const DIRECT_MOVE_VARIANT: MoveVariant = 0;
 const MAX_MOVE_VARIANT: MoveVariant = 2;
 
 fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
@@ -1055,7 +1093,8 @@ pub struct State {
     sizes: draw::Sizes,
     board: Board,
     templates: Templates,
-    animation_timer: AnimationTimer
+    animation_timer: AnimationTimer,
+    last_dir: Option<Dir>,
 }
 
 impl State {
@@ -1087,6 +1126,7 @@ pub const INPUT_LEFT_DOWN: InputFlags               = 0b0000_0000_0100_0000;
 pub const INPUT_RIGHT_DOWN: InputFlags              = 0b0000_0000_1000_0000;
 
 pub const INPUT_INTERACT_PRESSED: InputFlags        = 0b0000_0001_0000_0000;
+//pub const INPUT_WALK_DOWN: InputFlags               = 0b0000_0010_0000_0000;
 
 #[derive(Clone, Copy, Debug)]
 enum Input {
@@ -1095,28 +1135,38 @@ enum Input {
     Interact,
 }
 
+impl Dir {
+    fn from_flags(flags: InputFlags) -> Option<Self> {
+        use crate::Dir::*;
+        if (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) {
+            Some(UpRight)
+        } else if (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) {
+            Some(DownRight)
+        } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
+            Some(DownLeft)
+        } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
+            Some(UpLeft)
+        } else if INPUT_UP_DOWN & flags != 0 {
+            Some(Up)
+        } else if INPUT_DOWN_DOWN & flags != 0 {
+            Some(Down)
+        } else if INPUT_LEFT_DOWN & flags != 0 {
+            Some(Left)
+        } else if INPUT_RIGHT_DOWN & flags != 0 {
+            Some(Right)
+        } else {
+            None
+        }
+    }
+}
+
 impl Input {
     fn from_flags(flags: InputFlags) -> Self {
         use Input::*;
-        use crate::Dir::*;
         if INPUT_INTERACT_PRESSED & flags != 0 {
             Interact
-        } else if (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) {
-            Dir(UpRight)
-        } else if (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) {
-            Dir(DownRight)
-        } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
-            Dir(DownLeft)
-        } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
-            Dir(UpLeft)
-        } else if INPUT_UP_DOWN & flags != 0 {
-            Dir(Up)
-        } else if INPUT_DOWN_DOWN & flags != 0 {
-            Dir(Down)
-        } else if INPUT_LEFT_DOWN & flags != 0 {
-            Dir(Left)
-        } else if INPUT_RIGHT_DOWN & flags != 0 {
-            Dir(Right)
+        } else if let Some(dir) = crate::Dir::from_flags(flags) {
+            Dir(dir)
         } else {
             NoChange
         }
@@ -1150,6 +1200,11 @@ pub fn update(
     match input {
         NoChange => {},
         Dir(dir) => {
+            if Some(dir) != state.last_dir {
+                state.board.speech = Speech::Silence;
+            }
+            state.last_dir = Some(dir);
+
             state.board.eye_states[PLAYER_ENTITY] = Moved(dir);
 
             let pxy = player_xy!(state.board);
@@ -1169,13 +1224,19 @@ pub fn update(
             }
         },
         Interact => {
-            state.board.eye_states[PLAYER_ENTITY].prod();
+            if let Some(dir) = crate::Dir::from_flags(input_flags) {
+                let mut target = player_xy!(state.board);
+                move_xy(&mut target, dir, DIRECT_MOVE_VARIANT);
 
-            let player_xy = player_xy!(state.board);
+                for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                    if state.board.xys[entity] == target {
+                        state.board.speech = state.board.npcs[entity].into();
 
-            for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                if state.board.xys[entity].is_adjacent_to(player_xy) {
-                    state.board.eye_states[entity].prod();
+                        state.board.eye_states[PLAYER_ENTITY].prod();
+                        state.board.eye_states[entity].prod();
+
+                        break;
+                    }
                 }
             }
         },
@@ -1236,11 +1297,42 @@ pub fn update(
         }
     }
 
+    const MARGIN: f32 = 16.;
+
+    match state.board.speech {
+        Speech::Silence => {},
+        Speech::Trade(trade) => {
+            let left_edge_x = state.sizes.play_xywh.x + MARGIN;
+            let top_edge_y = state.sizes.board_xywh.y + MARGIN;
+
+            let mut x = left_edge_x;
+
+            for i in (0..MAX_WANT_COUNT).rev() {
+                commands.push(Sprite(SpriteSpec{
+                    sprite: SpriteKind::Item(trade.wants[i]),
+                    xy: DrawXY { x, y: top_edge_y },
+                }));
+
+                x += MARGIN + state.sizes.tile_side_length;
+            }
+
+            commands.push(Sprite(SpriteSpec{
+                sprite: SpriteKind::Arrow(crate::Dir::Right, ArrowKind::Green),
+                xy: DrawXY { x, y: top_edge_y },
+            }));            
+
+            x += MARGIN + state.sizes.tile_side_length;
+
+            commands.push(Sprite(SpriteSpec{
+                sprite: SpriteKind::Item(trade.offer),
+                xy: DrawXY { x, y: top_edge_y },
+            }));
+        },
+    }
+
     // TODO make this debug text toggleable?
     /*
     let left_text_x = state.sizes.play_xywh.x + MARGIN;
-
-    const MARGIN: f32 = 16.;
 
     let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
 
