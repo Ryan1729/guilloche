@@ -994,11 +994,8 @@ impl Board {
         if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i] {
-                    Npc::Nobody
-                    // On the off-chance that they would block a path otherwise, we
-                    // want them out of the way.
-                    | Npc::NoTrade => {},
-                    Npc::Trade(_) => if self.xys[i] == xy {
+                    Npc::Nobody => {},
+                    Npc::NoTrade | Npc::Trade(_) => if self.xys[i] == xy {
                         return false;
                     },
                 }
@@ -1309,7 +1306,7 @@ pub fn update(
             },
             Npc::NoTrade => {
                 commands.push(Sprite(SpriteSpec{
-                    sprite: SpriteKind::OffEye,
+                    sprite: SpriteKind::ClosedEye,
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },
