@@ -540,7 +540,25 @@ compile_time_assert!(InventoryBits::BITS as usize >= MAX_ITEM_TYPES_PER_CHUNK);
 impl Inventory {
     fn contains(&self, id: ItemId) -> bool {
         compile_time_assert!(NO_ITEM == 0);
-        id != NO_ITEM && self.bits & (1 << (id - 1)) != 0
+        id != NO_ITEM && self.bits & Self::id_to_bits(id) != 0
+    }
+
+    fn id_to_bits(id: ItemId) -> InventoryBits {
+        if id == NO_ITEM {
+            0
+        } else {
+            1 << (id - 1)
+        }
+    }
+}
+
+impl Inventory {
+    fn insert(&mut self, id: ItemId) {
+        self.bits |= Self::id_to_bits(id);
+    }
+
+    fn remove(&mut self, id: ItemId) {
+        self.bits &= !Self::id_to_bits(id);
     }
 }
 
@@ -623,7 +641,8 @@ struct Trade {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Npc {
     Nobody,
-    Trade(Trade)
+    Trade(Trade),
+    NoTrade
 }
 
 impl Default for Npc {
@@ -833,7 +852,7 @@ impl Default for Speech {
 impl From<Npc> for Speech {
     fn from(npc: Npc) -> Self {
         match npc {
-            Npc::Nobody => Self::Silence,
+            Npc::Nobody | Npc::NoTrade => Self::Silence,
             Npc::Trade(trade) => Self::Trade(trade),
         }
     }
@@ -975,7 +994,10 @@ impl Board {
         if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i] {
-                    Npc::Nobody => {},
+                    Npc::Nobody
+                    // On the off-chance that they would block a path otherwise, we
+                    // want them out of the way.
+                    | Npc::NoTrade => {},
                     Npc::Trade(_) => if self.xys[i] == xy {
                         return false;
                     },
@@ -1230,7 +1252,30 @@ pub fn update(
 
                 for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                     if state.board.xys[entity] == target {
-                        state.board.speech = state.board.npcs[entity].into();
+                        let target_speech = state.board.npcs[entity].into();
+
+                        state.board.speech = match state.board.speech {
+                            Speech::Silence => target_speech,
+                            Speech::Trade(trade) => {
+                                if trade.wants.iter()
+                                    .all(|&want| 
+                                        want == NO_ITEM
+                                        || state.board.inventory.contains(want)
+                                    ) {
+
+                                    for &want in trade.wants.iter() {
+                                        state.board.inventory.remove(want);
+                                    }
+                                    state.board.inventory.insert(trade.offer);
+
+                                    // TODO Have them walk somewhere else or 
+                                    // something?
+                                    state.board.npcs[entity] = Npc::NoTrade;
+                                }
+
+                                Speech::Silence
+                            },
+                        };
 
                         state.board.eye_states[PLAYER_ENTITY].prod();
                         state.board.eye_states[entity].prod();
@@ -1259,6 +1304,12 @@ pub fn update(
             Npc::Trade(_) => {
                 commands.push(Sprite(SpriteSpec{
                     sprite: state.board.eye_states[i].sprite(),
+                    xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
+                }));
+            },
+            Npc::NoTrade => {
+                commands.push(Sprite(SpriteSpec{
+                    sprite: SpriteKind::OffEye,
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },

@@ -46,7 +46,8 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         | NarrowCenterEye
         | NarrowRightEye
         | ClosedEye
-        | HalfLidEye => 0.,
+        | HalfLidEye
+        | OffEye => 0.,
         Arrow(_, ArrowKind::Green)| DirEye(_) => 1.,
         Wall(_, WallColour::DarkBrown) => 3.,
         Wall(_, WallColour::White) => 5.,
@@ -87,6 +88,7 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         NarrowRightEye => 12.,
         NarrowLeftEye => 13.,
         SmallPupilEye => 14.,
+        OffEye => 15.,
         Wall(Smooth, _) => 0.,
         Wall(Rivet, _) => 2.,
         Floor => BLANK_Y,

@@ -150,6 +150,7 @@ pub enum SpriteKind {
     NarrowRightEye,
     ClosedEye,
     HalfLidEye,
+    OffEye,
     Wall(WallStyle, WallColour),
     Floor,
     Item(ItemId)
