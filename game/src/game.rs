@@ -632,28 +632,6 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     xs_shuffle(rng, active_npcs);
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct Trade {
-    wants: [ItemId; MAX_WANT_COUNT],
-    offer: ItemId
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Npc {
-    Nobody,
-    Trade(Trade),
-    NoTrade
-}
-
-impl Default for Npc {
-    fn default() -> Self {
-        Self::Nobody
-    }
-}
-
-const MAX_NPCS_PER_GROUP: u8 = 2;
-const MAX_NPCS_PER_CHUNK: usize = TILE_GROUP_COUNT * MAX_NPCS_PER_GROUP as usize;
-
 #[derive(Clone, Debug)]
 pub struct Tiles {
     tiles: TileDataArray,
@@ -800,6 +778,38 @@ component_def!{
     XYs([tile::XY; ENTITY_COUNT])
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Trade {
+    wants: [ItemId; MAX_WANT_COUNT],
+    offer: ItemId
+}
+
+impl Trade {
+    fn contains(&self, item_id: ItemId) -> bool {
+        item_id != NO_ITEM
+        && (
+            self.offer == item_id
+            || self.wants.iter().any(|&id| id == item_id)
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Npc {
+    Nobody,
+    Trade(Trade),
+    NoTrade
+}
+
+impl Default for Npc {
+    fn default() -> Self {
+        Self::Nobody
+    }
+}
+
+const MAX_NPCS_PER_GROUP: u8 = 2;
+const MAX_NPCS_PER_CHUNK: usize = TILE_GROUP_COUNT * MAX_NPCS_PER_GROUP as usize;
+
 #[derive(Debug)]
 struct Npcs([Npc; MAX_NPCS_PER_CHUNK]);
 
@@ -837,6 +847,20 @@ impl core::ops::IndexMut<Entity> for Npcs {
     }
 }
 
+impl Npcs {
+    fn contains(&self, item_id: ItemId) -> bool {
+        for npc in &self.0 {
+            match dbg!(npc) {
+                Npc::Nobody => break,
+                Npc::Trade(trade) if trade.contains(item_id) => return true,
+                Npc::NoTrade | Npc::Trade(_) => {},
+            }
+        }
+
+        false
+    }
+}
+
 #[derive(Debug)]
 enum Speech {
     Silence,
@@ -858,9 +882,54 @@ impl From<Npc> for Speech {
     }
 }
 
+type RegenTimer = u16;
+
+const REGEN_TIMER_LENGTH: RegenTimer = 3 * 60 /* 60 FPS */ ;
+
+#[derive(Debug, Default)]
+struct RegenState {
+    item_offset: ItemId,
+    npc_offset: Entity,
+    timer: RegenTimer,
+}
+
+impl RegenState {
+    fn regeneratable_trade(
+        &mut self, 
+        inventory: &Inventory,
+        npcs: &Npcs,
+    ) -> Option<Trade> {
+        let mut trade = Trade::default();
+
+        for item_i in FIRST_ITEM_ID..=LAST_ITEM_ID {
+            let item_id = (
+                (item_i + self.item_offset)
+                % (LAST_ITEM_ID - FIRST_ITEM_ID)
+            ) + FIRST_ITEM_ID;
+            
+            // TODO sometimes regenerate trades with wants.
+            if !inventory.contains(item_id)
+            // TODO measure whether this is what is causing the frame hiccups and 
+            // pre-cache these bool in a set if so. Or maybe a collective inventory?
+            && !npcs.contains(item_id)
+            {
+                trade.offer = item_id;
+
+                // TODO randomize this maybe? Or is this unpredicatable enough?
+                self.item_offset += 1;
+
+                return Some(trade);
+            }
+        }
+
+        None
+    }
+}
+
 #[derive(Debug, Default)]
 struct Board {
     rng: Xs,
+    regen: RegenState,
     tiles: Tiles,
     npcs: Npcs,
     xys: XYs,
@@ -896,7 +965,7 @@ impl Board {
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
         let mut npcs = Npcs::default();
         let mut next_npc_index = NPC_ENTITY_MIN;
-        // We currently rely on the coversion from entiy to NPC index being merely
+        // We currently rely on the coversion from entity to NPC index being merely
         // a cast.
         compile_time_assert!(NPC_ENTITY_MIN == 0);
 
@@ -1207,6 +1276,28 @@ pub fn update(
 
     commands.clear();
 
+    if state.board.regen.timer == 0 {
+        if let Some(trade) = state.board.regen.regeneratable_trade(
+            &state.board.inventory,
+            &state.board.npcs,
+         ) {
+            for npc_i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                let npc_index = (
+                    (npc_i + state.board.regen.npc_offset)
+                    % (NPC_ENTITY_MAX - NPC_ENTITY_MIN)
+                ) + NPC_ENTITY_MIN;
+
+                if let Npc::NoTrade = state.board.npcs[npc_index] {
+                    state.board.npcs[npc_index] = Npc::Trade(trade);
+
+                    // TODO randomize this maybe? Or is this unpredicatable enough?
+                    state.board.regen.npc_offset += 1;
+                    break;
+                }
+            }
+        }
+    }
+
     let input = Input::from_flags(input_flags);
 
     use EyeState::*;
@@ -1421,5 +1512,10 @@ pub fn update(
     state.animation_timer += 1;
     if state.animation_timer >= ANIMATION_TIMER_LENGTH {
         state.animation_timer = 0;
+    }
+
+    state.board.regen.timer += 1;
+    if state.board.regen.timer >= REGEN_TIMER_LENGTH {
+        state.board.regen.timer = 0;
     }
 }

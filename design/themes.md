@@ -49,3 +49,4 @@
     * What is the goal of the game then?
         * Just play?
         * Solve the player character's large, complicated problem.
+        * Solve enough problems?
