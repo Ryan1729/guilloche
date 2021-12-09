@@ -840,7 +840,7 @@ impl core::ops::IndexMut<Entity> for Npcs {
 impl Npcs {
     fn contains(&self, item_id: ItemId) -> bool {
         for npc in &self.0 {
-            match dbg!(npc) {
+            match npc {
                 Npc::Nobody => break,
                 Npc::Trade(trade) if trade.contains(item_id) => return true,
                 Npc::NoTrade | Npc::Trade(_) => {},
