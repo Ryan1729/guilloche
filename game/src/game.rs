@@ -896,6 +896,8 @@ impl RegenState {
         // TODO cache this on the regen state, so we only need to update it when the
         // NPCs have changed.
         let npc_inventory = {
+            let mut inv = Inventory::default();
+
             for npc in &npcs.0 {
                 match npc {
                     Npc::Nobody => break,
