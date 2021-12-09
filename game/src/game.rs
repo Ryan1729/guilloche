@@ -474,10 +474,6 @@ impl Default for TileKind {
     }
 }
 
-/// A Tile should always be at a particular position, but that position should be
-/// derivable from the tiles location in the tiles array, so it doesn't need to be
-/// stored. But, we often want to get the tile's data and it's location as a single
-/// thing. This is why we have both `Tile` and `TileData`
 #[derive(Copy, Clone, Debug, Default)]
 struct TileData {
     kind: TileKind,
@@ -491,12 +487,6 @@ impl TileData {
             Wall => SpriteKind::Wall(<_>::default(), <_>::default()),
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-struct Tile {
-    xy: tile::XY,
-    data: TileData
 }
 
 pub const TILES_WIDTH: usize = tile::X::COUNT as _;
@@ -928,7 +918,6 @@ impl RegenState {
 
 #[derive(Debug, Default)]
 struct Board {
-    rng: Xs,
     regen: RegenState,
     tiles: Tiles,
     npcs: Npcs,
@@ -1045,7 +1034,6 @@ impl Board {
         populate_npcs(&mut rng, active_npcs);
 
         Self {
-            rng,
             tiles: Tiles { tiles },
             npcs,
             xys,
@@ -1180,7 +1168,6 @@ use templates::{
 pub struct State {
     sizes: draw::Sizes,
     board: Board,
-    templates: Templates,
     animation_timer: AnimationTimer,
     last_dir: Option<Dir>,
 }
@@ -1191,7 +1178,6 @@ impl State {
 
         Self {
             board: Board::from_seed(seed, &mut templates),
-            templates,
             ..<_>::default()
         }
     }
