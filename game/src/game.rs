@@ -775,6 +775,7 @@ struct Trade {
 }
 
 impl Trade {
+    #[allow(unused)]
     fn contains(&self, item_id: ItemId) -> bool {
         item_id != NO_ITEM
         && (
@@ -838,6 +839,7 @@ impl core::ops::IndexMut<Entity> for Npcs {
 }
 
 impl Npcs {
+    #[allow(unused)]
     fn contains(&self, item_id: ItemId) -> bool {
         for npc in &self.0 {
             match npc {
@@ -891,6 +893,31 @@ impl RegenState {
     ) -> Option<Trade> {
         let mut trade = Trade::default();
 
+        // TODO cache this on the regen state, so we only need to update it when the
+        // NPCs have changed.
+        let npc_inventory = {
+            use std::time::{Instant};
+            let start = Instant::now();
+            let mut inv = Inventory::default();
+
+            for npc in &npcs.0 {
+                match npc {
+                    Npc::Nobody => break,
+                    Npc::Trade(trade) => {
+                        inv.insert(trade.offer);
+                        for id in trade.wants {
+                            inv.insert(id);
+                        }
+                    },
+                    Npc::NoTrade => {},
+                }
+            }
+
+            let duration = Instant::now() - start;
+            dbg!("inv", duration.as_nanos());
+            inv
+        };
+
         for item_i in FIRST_ITEM_ID..=LAST_ITEM_ID {
             let item_id = (
                 (item_i + self.item_offset)
@@ -898,10 +925,17 @@ impl RegenState {
             ) + FIRST_ITEM_ID;
             
             // TODO sometimes regenerate trades with wants.
-            if !inventory.contains(item_id)
+            let not_in_inventory = !inventory.contains(item_id);
             // TODO measure whether this is what is causing the frame hiccups and 
             // pre-cache these bool in a set if so. Or maybe a collective inventory?
-            && !npcs.contains(item_id)
+            use std::time::{Instant};
+            let start = Instant::now();
+            let not_in_npcs = !npc_inventory.contains(item_id);//  !npcs.contains(item_id);
+            let duration = Instant::now() - start;
+            dbg!(duration.as_nanos());
+
+            if not_in_inventory
+            && not_in_npcs
             {
                 trade.offer = item_id;
 
