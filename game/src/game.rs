@@ -896,10 +896,6 @@ impl RegenState {
         // TODO cache this on the regen state, so we only need to update it when the
         // NPCs have changed.
         let npc_inventory = {
-            use std::time::{Instant};
-            let start = Instant::now();
-            let mut inv = Inventory::default();
-
             for npc in &npcs.0 {
                 match npc {
                     Npc::Nobody => break,
@@ -913,8 +909,6 @@ impl RegenState {
                 }
             }
 
-            let duration = Instant::now() - start;
-            dbg!("inv", duration.as_nanos());
             inv
         };
 
@@ -925,17 +919,8 @@ impl RegenState {
             ) + FIRST_ITEM_ID;
             
             // TODO sometimes regenerate trades with wants.
-            let not_in_inventory = !inventory.contains(item_id);
-            // TODO measure whether this is what is causing the frame hiccups and 
-            // pre-cache these bool in a set if so. Or maybe a collective inventory?
-            use std::time::{Instant};
-            let start = Instant::now();
-            let not_in_npcs = !npc_inventory.contains(item_id);//  !npcs.contains(item_id);
-            let duration = Instant::now() - start;
-            dbg!(duration.as_nanos());
-
-            if not_in_inventory
-            && not_in_npcs
+            if !inventory.contains(item_id)
+            && !npc_inventory.contains(item_id)
             {
                 trade.offer = item_id;
 
