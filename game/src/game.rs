@@ -549,15 +549,44 @@ impl Inventory {
         self.bits |= Self::id_to_bits(id);
     }
 
+    fn insert_all(&mut self, other: Self) {
+        self.bits |= other.bits;
+    }
+
     fn remove(&mut self, id: ItemId) {
         self.bits &= !Self::id_to_bits(id);
     }
+}
+
+const UNRESTRICTED_AGENT_COUNT_MIN: u32 = MAX_NPCS_PER_CHUNK as u32 / 16;
+const UNRESTRICTED_AGENT_COUNT_MAX: u32 = MAX_NPCS_PER_CHUNK as u32 / 8;
+compile_time_assert!(UNRESTRICTED_AGENT_COUNT_MIN <= UNRESTRICTED_AGENT_COUNT_MAX);
+
+fn agent_count_range(npc_count: u32) -> (u32, u32) {
+    if npc_count < UNRESTRICTED_AGENT_COUNT_MAX {
+        if npc_count < UNRESTRICTED_AGENT_COUNT_MIN {
+            (0, 1)
+        } else {
+            // TODO scale more continuously?
+            (UNRESTRICTED_AGENT_COUNT_MIN / 2, UNRESTRICTED_AGENT_COUNT_MAX / 2 + 1)
+        }
+    } else {
+        (UNRESTRICTED_AGENT_COUNT_MIN, UNRESTRICTED_AGENT_COUNT_MAX + 1)
+    }
+}
+
+#[test]
+fn agent_count_range_gives_the_expected_results_for_these_cases() {
+    assert_eq!(agent_count_range(UNRESTRICTED_AGENT_COUNT_MAX * 3), (UNRESTRICTED_AGENT_COUNT_MIN, UNRESTRICTED_AGENT_COUNT_MAX + 1));
+    assert_eq!(agent_count_range(UNRESTRICTED_AGENT_COUNT_MIN), (UNRESTRICTED_AGENT_COUNT_MIN / 2, (UNRESTRICTED_AGENT_COUNT_MAX / 2) + 1));
+    assert_eq!(agent_count_range(0), (0, 1));
 }
 
 const MAX_WANT_COUNT: usize = 2;
 
 fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     let len = active_npcs.len();
+
     debug_assert!(len <= MAX_NPCS_PER_CHUNK);
 
     let mut items = [NO_ITEM; MAX_NPCS_PER_CHUNK];
@@ -569,6 +598,15 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     // Since we manually set `trades[trade_i]` to offer `THE_MACGUFFIN`, `items[0]`
     // will never be read after this point.
 
+    debug_assert!(len <= u32::MAX as usize);
+    let (agent_count_min, agent_count_one_past_max) = agent_count_range(len as u32);
+
+    let agent_count = xs_u32(
+        rng,
+        agent_count_min,
+        agent_count_one_past_max,
+    );
+
     let mut trades = [Trade::default(); MAX_NPCS_PER_CHUNK];
     let mut trade_i = 0;
     trades[trade_i] = Trade {
@@ -577,7 +615,8 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     };
     trade_i += 1;
 
-    while trade_i < len {
+    let trader_count = len - agent_count as usize;
+    while trade_i < trader_count {
         let added_item = items[trade_i];
 
         let (extended_trade_i, want_i) = {
@@ -617,8 +656,12 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
         trade_i += 1;
     }
 
-    for i in 0..active_npcs.len() {
+    for i in 0..trader_count {
         active_npcs[i] = Npc::Trade(trades[i]);
+    }
+
+    for npc in active_npcs.iter_mut().take(len).skip(trader_count) {
+        *npc = Npc::Agent(<_>::default());
     }
 
     xs_shuffle(rng, active_npcs);
@@ -791,7 +834,8 @@ impl Trade {
 enum Npc {
     Nobody,
     Trade(Trade),
-    NoTrade
+    NoTrade,
+    Agent(Inventory)
 }
 
 impl Default for Npc {
@@ -840,21 +884,6 @@ impl core::ops::IndexMut<Entity> for Npcs {
     }
 }
 
-impl Npcs {
-    #[allow(unused)]
-    fn contains(&self, item_id: ItemId) -> bool {
-        for npc in &self.0 {
-            match npc {
-                Npc::Nobody => break,
-                Npc::Trade(trade) if trade.contains(item_id) => return true,
-                Npc::NoTrade | Npc::Trade(_) => {},
-            }
-        }
-
-        false
-    }
-}
-
 #[derive(Debug)]
 enum Speech {
     Silence,
@@ -870,7 +899,10 @@ impl Default for Speech {
 impl From<Npc> for Speech {
     fn from(npc: Npc) -> Self {
         match npc {
-            Npc::Nobody | Npc::NoTrade => Self::Silence,
+            Npc::Nobody
+            | Npc::NoTrade
+            // Later, we can have the agent make trades too.
+            | Npc::Agent(_) => Self::Silence,
             Npc::Trade(trade) => Self::Trade(trade),
         }
     }
@@ -898,22 +930,25 @@ impl RegenState {
         // TODO cache this on the regen state, so we only need to update it when the
         // NPCs have changed.
         let npc_inventory = {
-            let mut inv = Inventory::default();
+            let mut npc_inventory = Inventory::default();
 
             for npc in &npcs.0 {
                 match npc {
                     Npc::Nobody => break,
                     Npc::Trade(trade) => {
-                        inv.insert(trade.offer);
+                        npc_inventory.insert(trade.offer);
                         for id in trade.wants {
-                            inv.insert(id);
+                            npc_inventory.insert(id);
                         }
                     },
                     Npc::NoTrade => {},
+                    Npc::Agent(inv) => {
+                        npc_inventory.insert_all(*inv);
+                    }
                 }
             }
 
-            inv
+            npc_inventory
         };
 
         for item_i in FIRST_ITEM_ID..=LAST_ITEM_ID {
@@ -1074,8 +1109,10 @@ impl Board {
         if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i] {
-                    Npc::Nobody => {},
-                    Npc::NoTrade | Npc::Trade(_) => if self.xys[i] == xy {
+                    Npc::Nobody => break,
+                    Npc::NoTrade
+                    | Npc::Trade(_)
+                    | Npc::Agent(_) => if self.xys[i] == xy {
                         return false;
                     },
                 }
@@ -1412,6 +1449,15 @@ pub fn update(
                     sprite: SpriteKind::Eye(
                         EyeVariant::Trader,
                         EyeSpriteKind::ClosedEye
+                    ),
+                    xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
+                }));
+            },
+            Npc::Agent(_) => {
+                commands.push(Sprite(SpriteSpec{
+                    sprite: SpriteKind::Eye(
+                        EyeVariant::Agent,
+                        state.board.eye_states[i].sprite()
                     ),
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
