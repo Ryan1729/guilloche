@@ -33,22 +33,44 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
     use ArrowKind::*;
     use Dir::*;
     use SpriteKind::*;
-    use game::{FIRST_ITEM_ID, LAST_ITEM_ID, WallStyle::*};
+    use game::{
+        FIRST_ITEM_ID,
+        LAST_ITEM_ID,
+        EyeVariant::*,
+        EyeSpriteKind::*,
+        WallStyle::*,
+    };
 
     const BLANK_X: f32 = 2.;
-    const BLANK_Y: f32 = 15.;
+    const BLANK_Y: f32 = 6.;
 
     let sx = match sprite {
-        NeutralEye
-        | Arrow(_, Red)
-        | SmallPupilEye
-        | NarrowLeftEye
-        | NarrowCenterEye
-        | NarrowRightEye
-        | ClosedEye
-        | HalfLidEye
-        | OffEye => 0.,
-        Arrow(_, ArrowKind::Green)| DirEye(_) => 1.,
+        Eye(
+            Trader, 
+            NeutralEye 
+            | SmallPupilEye
+            | NarrowLeftEye
+            | NarrowCenterEye
+            | NarrowRightEye
+            | ClosedEye
+            | HalfLidEye
+            | OffEye,
+        ) => 0.,
+        Eye(Trader, DirEye(_)) => 1.,
+        Eye(
+            Agent, 
+            NeutralEye 
+            | SmallPupilEye
+            | NarrowLeftEye
+            | NarrowCenterEye
+            | NarrowRightEye
+            | ClosedEye
+            | HalfLidEye
+            | OffEye,
+        ) => 2.,
+        Eye(Agent, DirEye(_)) => 3.,
+        Arrow(_, Red) => 0.,
+        Arrow(_, ArrowKind::Green) => 1.,
         Wall(_, WallColour::DarkBrown) => 3.,
         Wall(_, WallColour::White) => 5.,
         Wall(_, WallColour::Grey) => 7.,
@@ -73,22 +95,24 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         Arrow(DownLeft, _) => 5.,
         Arrow(Left, _) => 6.,
         Arrow(UpLeft, _) => 7.,
-        DirEye(Up) => 8.,
-        DirEye(UpRight) => 9.,
-        DirEye(Right) => 10.,
-        DirEye(DownRight) => 11.,
-        DirEye(Down) => 12.,
-        DirEye(DownLeft) => 13.,
-        DirEye(Left) => 14.,
-        DirEye(UpLeft) => 15.,
-        ClosedEye => 8.,
-        HalfLidEye => 9.,
-        NeutralEye => 10.,
-        NarrowCenterEye => 11.,
-        NarrowRightEye => 12.,
-        NarrowLeftEye => 13.,
-        SmallPupilEye => 14.,
-        OffEye => 15.,
+        Eye(_, DirEye(dir)) => match dir {
+            Up => 8.,
+            UpRight => 9.,
+            Right => 10.,
+            DownRight => 11.,
+            Down => 12.,
+            DownLeft => 13.,
+            Left => 14.,
+            UpLeft => 15.
+        },
+        Eye(_, ClosedEye) => 8.,
+        Eye(_, HalfLidEye) => 9.,
+        Eye(_, NeutralEye) => 10.,
+        Eye(_, NarrowCenterEye) => 11.,
+        Eye(_, NarrowRightEye) => 12.,
+        Eye(_, NarrowLeftEye) => 13.,
+        Eye(_, SmallPupilEye) => 14.,
+        Eye(_, OffEye) => 15.,
         Wall(Smooth, _) => 0.,
         Wall(Rivet, _) => 2.,
         Floor => BLANK_Y,

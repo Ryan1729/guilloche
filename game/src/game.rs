@@ -146,6 +146,8 @@ pub use draw::{
     DrawH,
     DrawWH,
     SpriteKind,
+    EyeSpriteKind,
+    EyeVariant,
     SpriteSpec,
     Sizes,
 };
@@ -654,17 +656,17 @@ impl Default for EyeState {
 }
 
 impl EyeState {
-    fn sprite(&self) -> SpriteKind {
+    fn sprite(&self) -> EyeSpriteKind {
         use EyeState::*;
         match self {
-            Idle => SpriteKind::NeutralEye,
-            Moved(dir) => SpriteKind::DirEye(*dir),
-            NarrowAnimLeft => SpriteKind::NarrowLeftEye,
-            NarrowAnimCenter => SpriteKind::NarrowCenterEye,
-            NarrowAnimRight => SpriteKind::NarrowRightEye,
-            SmallPupil => SpriteKind::SmallPupilEye,
-            Closed => SpriteKind::ClosedEye,
-            HalfLid => SpriteKind::HalfLidEye,
+            Idle => EyeSpriteKind::NeutralEye,
+            Moved(dir) => EyeSpriteKind::DirEye(*dir),
+            NarrowAnimLeft => EyeSpriteKind::NarrowLeftEye,
+            NarrowAnimCenter => EyeSpriteKind::NarrowCenterEye,
+            NarrowAnimRight => EyeSpriteKind::NarrowRightEye,
+            SmallPupil => EyeSpriteKind::SmallPupilEye,
+            Closed => EyeSpriteKind::ClosedEye,
+            HalfLid => EyeSpriteKind::HalfLidEye,
         }
     }
 
@@ -1398,13 +1400,19 @@ pub fn update(
             Npc::Nobody => break,
             Npc::Trade(_) => {
                 commands.push(Sprite(SpriteSpec{
-                    sprite: state.board.eye_states[i].sprite(),
+                    sprite: SpriteKind::Eye(
+                        EyeVariant::Trader,
+                        state.board.eye_states[i].sprite()
+                    ),
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },
             Npc::NoTrade => {
                 commands.push(Sprite(SpriteSpec{
-                    sprite: SpriteKind::ClosedEye,
+                    sprite: SpriteKind::Eye(
+                        EyeVariant::Trader,
+                        EyeSpriteKind::ClosedEye
+                    ),
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },
@@ -1412,7 +1420,10 @@ pub fn update(
     }
 
     commands.push(Sprite(SpriteSpec{
-        sprite: state.board.eye_states[PLAYER_ENTITY].sprite(),
+        sprite: SpriteKind::Eye(
+            EyeVariant::Agent,
+            state.board.eye_states[PLAYER_ENTITY].sprite()
+        ),
         xy: draw_xy_from_tile(&state.sizes, player_xy!(state.board)),
     }));
 

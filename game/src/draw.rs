@@ -140,10 +140,15 @@ pub fn fresh_sizes(wh: DrawWH) -> Sizes {
 use crate::{ArrowKind, Dir, ItemId, WallStyle, WallColour};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SpriteKind {
+pub enum EyeVariant {
+    Trader,
+    Agent
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EyeSpriteKind {
     NeutralEye,
     DirEye(Dir),
-    Arrow(Dir, ArrowKind),
     SmallPupilEye,
     NarrowLeftEye,
     NarrowCenterEye,
@@ -151,6 +156,12 @@ pub enum SpriteKind {
     ClosedEye,
     HalfLidEye,
     OffEye,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpriteKind {
+    Eye(EyeVariant, EyeSpriteKind),
+    Arrow(Dir, ArrowKind),
     Wall(WallStyle, WallColour),
     Floor,
     Item(ItemId)
@@ -158,7 +169,7 @@ pub enum SpriteKind {
 
 impl Default for SpriteKind {
     fn default() -> Self {
-        Self::NeutralEye
+        Self::Arrow(Dir::Down, ArrowKind::Red)
     }
 }
 
