@@ -39,7 +39,6 @@ fn xs_u32(xs: &mut Xs, min: u32, one_past_max: u32) -> u32 {
     (xorshift(xs) % (one_past_max - min)) + min
 }
 
-#[allow(unused)]
 fn xs_shuffle<A>(rng: &mut Xs, slice: &mut [A]) {
     for i in 1..slice.len() as u32 {
         // This only shuffles the first u32::MAX_VALUE - 1 elements.
@@ -322,7 +321,57 @@ mod tile {
         }
     }
 
+    struct XYOrthoganalIter{
+        xys: [Option<XY>; crate::Dir::COUNT],
+        index: usize
+    }
+
+    impl XYOrthoganalIter {
+        #[allow(unused_assignments)]
+        fn new(xy: XY) -> Self {
+            let mut xys = [None; crate::Dir::COUNT];
+            compile_time_assert!(crate::Dir::COUNT < usize::MAX);
+
+            let mut i = 0;
+            macro_rules! push {
+                ($method: ident) => {
+                    let mut new_xy = xy;
+                    new_xy.$method();
+                    if new_xy != xy {
+                        xys[i] = Some(new_xy);
+                    }
+                    // This is unused in the last macro invocation.
+                    i += 1;
+                }
+            }
+
+            push!(move_up);
+            push!(move_left);
+            push!(move_right);
+            push!(move_down);
+
+            XYOrthoganalIter {
+                xys,
+                index: 0,
+            }
+        }
+    }
+
+    impl Iterator for XYOrthoganalIter {
+        type Item = XY;
+
+        fn next(&mut self) -> Option<XY> {
+            let output = self.xys.get(self.index).and_then(|xy| xy.map(|xy| xy));
+            self.index += 1;
+            output
+        }
+    }
+
     impl XY {
+        pub fn orthogonal_iter(&self) -> impl Iterator<Item = Self> {
+            XYOrthoganalIter::new(*self)
+        }
+
         #[allow(unused)]
         pub fn is_adjacent_to(&self, xy: Self) -> bool {
             // Who cares about a few extra clones here?
@@ -939,7 +988,7 @@ struct RegenState {
 
 impl RegenState {
     fn regeneratable_trade(
-        &mut self, 
+        &mut self,
         inventory: &Inventory,
         npcs: &Npcs,
     ) -> Option<Trade> {
@@ -974,7 +1023,7 @@ impl RegenState {
                 (item_i + self.item_offset)
                 % (LAST_ITEM_ID - FIRST_ITEM_ID)
             ) + FIRST_ITEM_ID;
-            
+
             // TODO sometimes regenerate trades with wants.
             if !inventory.contains(item_id)
             && !npc_inventory.contains(item_id)
@@ -1227,6 +1276,58 @@ fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
     }
 }
 
+// When/if we have a second use case, maybe make this a generic constant?
+// That is, something like `struct XYDeck<const COUNT: usize> {}`
+const XY_DECK_COUNT: usize = MAX_NPCS_PER_CHUNK * Dir::COUNT;
+struct XYDeck {
+    deck: [tile::XY; XY_DECK_COUNT],
+    current_index: usize,
+    max_index: usize,
+}
+compile_time_assert!(MAX_NPCS_PER_CHUNK > 0);
+
+impl XYDeck {
+    fn active_trading_spots(board: &mut Board) -> Option<XYDeck> {
+        let mut deck = [tile::XY::default(); XY_DECK_COUNT];
+
+        let mut max_index = None;
+
+        for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+            if let Npc::Trade(_) = board.npcs[entity] {
+                for xy in board.xys[entity].orthogonal_iter() {
+                    if board.is_walkable(xy) {
+                        let i = max_index.map(|i| i + 1).unwrap_or(0);
+                        deck[i] = xy;
+                        max_index = Some(i);
+                    }
+                }
+            }
+        }
+
+        max_index.map(|max_index| {
+            xs_shuffle(&mut board.rng, &mut deck[0..=max_index]);
+
+            XYDeck {
+                deck,
+                max_index,
+                current_index: max_index,
+            }
+        })
+    }
+
+    fn draw(&mut self, rng: &mut Xs) -> tile::XY {
+        let output = self.deck[self.current_index];
+        if self.current_index == 0 {
+            xs_shuffle(rng, &mut self.deck[0..=self.max_index]);
+            self.current_index = self.max_index;
+        } else {
+            self.current_index -= 1;
+        }
+
+        output
+    }
+}
+
 /// 64k animation frames ought to be enough for anybody!
 type AnimationTimer = u16;
 
@@ -1412,7 +1513,7 @@ pub fn update(
                             Speech::Silence => target_speech,
                             Speech::Trade(trade) => {
                                 if trade.wants.iter()
-                                    .all(|&want| 
+                                    .all(|&want|
                                         want == NO_ITEM
                                         || state.board.inventory.contains(want)
                                     ) {
@@ -1422,7 +1523,7 @@ pub fn update(
                                     }
                                     state.board.inventory.insert(trade.offer);
 
-                                    // TODO Have them walk somewhere else or 
+                                    // TODO Have them walk somewhere else or
                                     // something?
                                     state.board.npcs[entity] = Npc::NoTrade;
                                 }
@@ -1441,19 +1542,27 @@ pub fn update(
         },
     }
 
-    for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-        #[allow(clippy::single_match)]
-        match state.board.npcs[i] {
-            Npc::Agent(ref mut agent) => {
+    if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
+        &mut state.board,
+    ) {
+        for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+            if let Npc::Agent(ref mut agent) = state.board.npcs[i] {
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {
-                        agent.target = Target(tile::XY::from_rng(&mut state.board.rng))
+                        // It is, of course, possible that the location will not be
+                        // walkable by the time we get there. A form of the TOCTOU
+                        // problem. The agent will need to deal with this when they
+                        // get closer to there. Similarly they will also need to
+                        // deal with the possibility of multiple agents having the
+                        // same target, or the trader not being active at that time.
+                        agent.target = Target(
+                            trader_xy_deck.draw(&mut state.board.rng)
+                        );
                     },
                     Target(_) => {}
                 }
             }
-            _ => {}
         }
     }
 
@@ -1576,7 +1685,7 @@ pub fn update(
             commands.push(Sprite(SpriteSpec{
                 sprite: SpriteKind::Arrow(crate::Dir::Right, ArrowKind::Green),
                 xy: DrawXY { x, y: top_edge_y },
-            }));            
+            }));
 
             x += MARGIN + state.sizes.tile_side_length;
 
