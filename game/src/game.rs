@@ -831,11 +831,29 @@ impl Trade {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentTarget {
+    NoTarget,
+    Target(tile::XY),
+}
+
+impl Default for AgentTarget {
+    fn default() -> Self {
+        Self::NoTarget
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Agent {
+    inventory: Inventory,
+    target: AgentTarget,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Npc {
     Nobody,
     Trade(Trade),
     NoTrade,
-    Agent(Inventory)
+    Agent(Agent)
 }
 
 impl Default for Npc {
@@ -942,8 +960,8 @@ impl RegenState {
                         }
                     },
                     Npc::NoTrade => {},
-                    Npc::Agent(inv) => {
-                        npc_inventory.insert_all(*inv);
+                    Npc::Agent(agent) => {
+                        npc_inventory.insert_all(agent.inventory);
                     }
                 }
             }
@@ -983,6 +1001,7 @@ struct Board {
     eye_states: EyeStates,
     inventory: Inventory,
     speech: Speech,
+    rng: Xs,
 }
 
 macro_rules! player_xy {
@@ -1095,6 +1114,7 @@ impl Board {
             tiles: Tiles { tiles },
             npcs,
             xys,
+            rng,
             .. <_>::default()
         }
     }
@@ -1421,6 +1441,26 @@ pub fn update(
         },
     }
 
+    for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+        #[allow(clippy::single_match)]
+        match state.board.npcs[i] {
+            Npc::Agent(ref mut agent) => {
+                use AgentTarget::*;
+                match agent.target {
+                    NoTarget => {
+                        agent.target = Target(tile::XY::from_rng(&mut state.board.rng))
+                    },
+                    Target(_) => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    //
+    // Drawing
+    //
+
     for i in 0..TILES_LENGTH {
         let tile_data = state.board.tiles.tiles[i];
 
@@ -1453,7 +1493,7 @@ pub fn update(
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
             },
-            Npc::Agent(_) => {
+            Npc::Agent(agent) => {
                 commands.push(Sprite(SpriteSpec{
                     sprite: SpriteKind::Eye(
                         EyeVariant::Agent,
@@ -1461,6 +1501,20 @@ pub fn update(
                     ),
                     xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
                 }));
+
+                use AgentTarget::*;
+                match agent.target {
+                    NoTarget => {},
+                    Target(xy) => {
+                        commands.push(Sprite(SpriteSpec{
+                            sprite: SpriteKind::Arrow(
+                                <_>::default(),
+                                <_>::default()
+                            ),
+                            xy: draw_xy_from_tile(&state.sizes, xy),
+                        }));
+                    }
+                }
             },
         }
     }
