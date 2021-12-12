@@ -1653,24 +1653,29 @@ pub fn update(
                 }));
             },
             Npc::Agent(agent) => {
+                let xy = state.board.xys[i];
                 commands.push(Sprite(SpriteSpec{
                     sprite: SpriteKind::Eye(
                         EyeVariant::Agent,
                         state.board.eye_states[i].sprite()
                     ),
-                    xy: draw_xy_from_tile(&state.sizes, state.board.xys[i]),
+                    xy: draw_xy_from_tile(&state.sizes, xy),
                 }));
 
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
-                    Target(xy) => {
+                    Target(target) => {
                         commands.push(Sprite(SpriteSpec{
                             sprite: SpriteKind::Arrow(
                                 <_>::default(),
-                                <_>::default()
+                                if target == xy {
+                                    ArrowKind::Green
+                                } else {
+                                    ArrowKind::Red
+                                }
                             ),
-                            xy: draw_xy_from_tile(&state.sizes, xy),
+                            xy: draw_xy_from_tile(&state.sizes, target),
                         }));
                     }
                 }
