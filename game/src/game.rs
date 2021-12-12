@@ -1354,8 +1354,7 @@ struct WalkGoal {
 fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
     // TODO implement A* or similar instead.
     let mut output = at;
-//    let mut best_distance = manhattan_distance(at, target);
-    let mut best_distance = Distance::MAX; // flickery
+    let mut best_distance = manhattan_distance(at, target);
 
     for xy in board.walkable_from(at) {
         let new_dist = manhattan_distance(xy, target);
