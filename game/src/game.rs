@@ -368,8 +368,8 @@ mod tile {
     }
 
     impl XY {
-        pub fn orthogonal_iter(&self) -> impl Iterator<Item = Self> {
-            XYOrthoganalIter::new(*self)
+        pub fn orthogonal_iter(self) -> impl Iterator<Item = Self> {
+            XYOrthoganalIter::new(self)
         }
 
         #[allow(unused)]
@@ -1187,10 +1187,16 @@ impl Board {
                 }
             }
 
-            true
+            self.xys[PLAYER_ENTITY] != xy
         } else {
             false
         }
+    }
+
+    fn walkable_from(&self, at: tile::XY) -> impl Iterator<Item = tile::XY> + '_ {
+        at.orthogonal_iter().filter(|&xy| {
+            self.is_walkable(xy)
+        })
     }
 }
 
@@ -1326,6 +1332,40 @@ impl XYDeck {
 
         output
     }
+}
+
+type Distance = tile::Count;
+
+fn manhattan_distance(
+    tile::XY{ x: x1, y: y1 }: tile::XY,
+    tile::XY{ x: x2, y: y2 }: tile::XY
+) -> Distance {
+    compile_time_assert!(i16::BITS > tile::Coord::BITS);
+    compile_time_assert!(Distance::BITS >= i16::BITS);
+    macro_rules! to { ($c: ident) => {{ tile::Coord::from($c) as i16 }} }
+    ((to!(x1) - to!(x2)).abs() + (to!(y1) - to!(y2)).abs()) as Distance
+}
+
+struct WalkGoal {
+    at: tile::XY,
+    target: tile::XY,
+}
+
+fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
+    // TODO implement A* or similar instead.
+    let mut output = at;
+//    let mut best_distance = manhattan_distance(at, target);
+    let mut best_distance = Distance::MAX; // flickery
+
+    for xy in board.walkable_from(at) {
+        let new_dist = manhattan_distance(xy, target);
+        if new_dist < best_distance {
+            output = xy;
+            best_distance = new_dist;
+        }
+    }
+
+    output
 }
 
 /// 64k animation frames ought to be enough for anybody!
@@ -1545,8 +1585,8 @@ pub fn update(
     if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
         &mut state.board,
     ) {
-        for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-            if let Npc::Agent(ref mut agent) = state.board.npcs[i] {
+        for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {
@@ -1560,7 +1600,17 @@ pub fn update(
                             trader_xy_deck.draw(&mut state.board.rng)
                         );
                     },
-                    Target(_) => {}
+                    Target(target) => {
+                        let goal = WalkGoal {
+                            at: state.board.xys[entity],
+                            target,
+                        };
+                        let next = next_walk_step(
+                            &state.board,
+                            goal
+                        );
+                        state.board.xys[entity] = next;
+                    }
                 }
             }
         }
