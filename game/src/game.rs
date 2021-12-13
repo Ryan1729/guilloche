@@ -236,7 +236,7 @@ mod tile {
 
     pub type Coord = u8;
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct X(Coord);
 
     impl X {
@@ -262,7 +262,7 @@ mod tile {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct Y(Coord);
 
     impl Y {
@@ -288,7 +288,7 @@ mod tile {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct XY {
         pub x: X,
         pub y: Y,
@@ -1352,19 +1352,127 @@ struct WalkGoal {
 }
 
 fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
-    // TODO implement A* or similar instead.
-    let mut output = at;
-    let mut best_distance = manhattan_distance(at, target);
+    use std::collections::{BinaryHeap, HashMap};
+    use core::cmp::Ordering;
 
-    for xy in board.walkable_from(at) {
-        let new_dist = manhattan_distance(xy, target);
-        if new_dist < best_distance {
-            output = xy;
-            best_distance = new_dist;
+    // The maximum possible length shortest path would be from one corner
+    // to the opposite corner, along the edges.
+    const LONGEST_PATH_LENGTH: usize = TILES_WIDTH * 2;
+
+    // A* based on the pseudocode at
+    // https://en.wikipedia.org/w/index.php?title=A*_search_algorithm&oldid=1055876705
+    // The Rust BinaryHeap docs were also referenced.
+    // We bake in manhattan_distance as the heuristic function.
+
+    // For a given xy, came_from[xy] is the xy immediately preceding it on the
+    // cheapest path from at to xy currently known.
+    let mut came_from: HashMap<tile::XY, tile::XY>
+        = HashMap::with_capacity(LONGEST_PATH_LENGTH);
+
+    // For a given xy, g_score[xy] is the cost of the cheapest path from at to xy
+    // currently known.
+    let mut g_score: HashMap<tile::XY, Distance>
+        = HashMap::with_capacity(LONGEST_PATH_LENGTH);
+    g_score.insert(at, 0);
+
+    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    struct ScoredXY {
+        // For a ScoredXY with a given xy, we mantain that
+        // f_score[xy] := g_score[xy] + manhattan_distance(at, xy).
+        // f_score[xy] represents our current best guess as to how short a path from
+        // at to target can be if it goes through xy.
+        f_score: Distance,
+        xy: tile::XY,
+    }
+
+    // The priority queue depends on `Ord`.
+    // Explicitly implement the trait so the queue becomes a min-heap
+    // instead of a max-heap.
+    impl Ord for ScoredXY {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // Notice that the we flip the ordering on scores.
+            other.f_score.cmp(&self.f_score)
+                // In case of a tie we compare positions - this step is necessary
+                // to make implementations of `PartialEq` and `Ord` consistent.
+                .then_with(|| self.xy.cmp(&other.xy))
         }
     }
 
-    output
+    impl PartialOrd for ScoredXY {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    // The set of discovered nodes that may need to be (re-)expanded.
+    // Initially, only the start node is known.
+    let mut open_set = BinaryHeap::with_capacity(
+        LONGEST_PATH_LENGTH
+    );
+
+    open_set.push(ScoredXY{
+        xy: at,
+        // AKA manhattan_distance(at, at)
+        f_score: 0,
+    });
+
+    while !open_set.is_empty() {
+        // We can unwrap since we just checked if it was empty.
+        let current = open_set.peek().cloned().unwrap();
+        if current.xy == target {
+            let mut output = target;
+
+            while let Some(&v) = came_from.get(&output) {
+                if v == at {
+                    break
+                }
+                output = v;
+            }
+
+            return output;
+        }
+
+        // Peek is O(1), pop is O(log n), so popping after the return saves us from
+        // having to do the final O(log n) operations.
+        open_set.pop();
+
+        for neighbor in board.walkable_from(current.xy) {
+            // tentative_g_score is the distance from start to the neighbor through
+            // current
+            let tentative_g_score =
+                g_score.get(&current.xy)
+                .unwrap_or(&Distance::MAX)
+                // + 1 for the distance from current to neighbor.
+                .saturating_add(1);
+            if
+                tentative_g_score
+                < g_score.get(&neighbor).cloned().unwrap_or(Distance::MAX)
+            {
+                // This path to neighbor is better than any previous one. Record it!
+                came_from.insert(neighbor, current.xy);
+                g_score.insert(neighbor, tentative_g_score);
+
+                let mut not_already_there = true;
+                for scored_xy in open_set.iter() {
+                    if scored_xy.xy == neighbor {
+                        not_already_there = false;
+                        break;
+                    }
+                }
+                if not_already_there {
+                    open_set.push(ScoredXY {
+                        f_score: tentative_g_score.saturating_add(
+                            manhattan_distance(at, neighbor)
+                        ),
+                        xy: neighbor
+                    });
+                }
+            }
+        }
+    }
+
+    // Open set is empty but goal was never reached
+    at
 }
 
 /// 64k animation frames ought to be enough for anybody!
