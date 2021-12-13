@@ -1452,6 +1452,8 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
                 came_from.insert(neighbor, current.xy);
                 g_score.insert(neighbor, tentative_g_score);
 
+                // TODO take timings to see if this is the slow part, and if so
+                // keep a hashset of what is in the openset.
                 let mut not_already_there = true;
                 for scored_xy in open_set.iter() {
                     if scored_xy.xy == neighbor {
