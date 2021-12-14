@@ -1721,6 +1721,8 @@ pub fn update(
     if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
         &mut state.board,
     ) {
+        let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
+
         for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
             if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
                 use AgentTarget::*;
@@ -1745,9 +1747,24 @@ pub fn update(
                             &state.board,
                             goal
                         );
-                        state.board.xys[entity] = next;
+
+                        move_pairs.push((entity, next));
                     }
                 }
+            }
+        }
+
+        use std::collections::HashMap;
+        let mut counts: HashMap<tile::XY, _> = HashMap::with_capacity(move_pairs.len());
+        for &(_entity, xy) in &move_pairs {
+            let counter = counts.entry(xy).or_insert(0);
+            *counter += 1;
+        }
+
+        for (entity, xy) in move_pairs {
+            // We can use [] since we just inserted every xy.
+            if counts[&xy] == 1 {
+                state.board.xys[entity] = xy;
             }
         }
     }
