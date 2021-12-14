@@ -239,9 +239,7 @@ mod raylib_rs_platform {
                 Err(err) => err.duration(),
             };
 
-            let _ = duration.as_nanos();
-            // Two Agents get trapped in donkey space
-            1639093164565373499
+            duration.as_nanos()
         };
         println!("{}", seed);
 
