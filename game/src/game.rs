@@ -1352,6 +1352,8 @@ struct WalkGoal {
 }
 
 fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
+    use std::time::{Instant};
+
     use std::collections::{BinaryHeap, HashMap};
     use core::cmp::Ordering;
 
@@ -1363,7 +1365,8 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
     // https://en.wikipedia.org/w/index.php?title=A*_search_algorithm&oldid=1055876705
     // The Rust BinaryHeap docs were also referenced.
     // We bake in manhattan_distance as the heuristic function.
-
+let overall_start = Instant::now();
+let allocation_start = overall_start;
     // For a given xy, came_from[xy] is the xy immediately preceding it on the
     // cheapest path from at to xy currently known.
     let mut came_from: HashMap<tile::XY, tile::XY>
@@ -1416,11 +1419,18 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
         f_score: 0,
     });
 
+let allocation_end = Instant::now();
+let loop_start = allocation_end;
+let mut largest_innermost_loop_duration = std::time::Duration::default();
+let mut innermost_loop_total_duration = std::time::Duration::default();
+
+    let mut output = at;
+
     while !open_set.is_empty() {
         // We can unwrap since we just checked if it was empty.
         let current = open_set.peek().cloned().unwrap();
         if current.xy == target {
-            let mut output = target;
+            output = target;
 
             while let Some(&v) = came_from.get(&output) {
                 if v == at {
@@ -1428,8 +1438,8 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
                 }
                 output = v;
             }
-
-            return output;
+            
+            break
         }
 
         // Peek is O(1), pop is O(log n), so popping after the return saves us from
@@ -1452,15 +1462,23 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
                 came_from.insert(neighbor, current.xy);
                 g_score.insert(neighbor, tentative_g_score);
 
+                let innermost_loop_start = Instant::now();
                 // TODO take timings to see if this is the slow part, and if so
                 // keep a hashset of what is in the openset.
                 let mut not_already_there = true;
                 for scored_xy in open_set.iter() {
                     if scored_xy.xy == neighbor {
                         not_already_there = false;
-                        break;
+                        break
                     }
                 }
+                let innermost_loop_end = Instant::now();
+                let innermost_loop_duration = innermost_loop_end - innermost_loop_start;
+                if innermost_loop_duration > largest_innermost_loop_duration {
+                    largest_innermost_loop_duration = innermost_loop_duration;
+                }
+                innermost_loop_total_duration += innermost_loop_duration;
+
                 if not_already_there {
                     open_set.push(ScoredXY {
                         f_score: tentative_g_score.saturating_add(
@@ -1473,8 +1491,17 @@ fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
         }
     }
 
-    // Open set is empty but goal was never reached
-    at
+let loop_end = Instant::now();
+let overall_end = loop_end;
+
+println!("allocation: {}", (allocation_end - allocation_start).as_nanos());
+println!("largest_innermost_loop_duration: {}", largest_innermost_loop_duration.as_nanos());
+println!("innermost_loop_total: {}", innermost_loop_total_duration.as_nanos());
+println!("loop: {}", (loop_end - loop_start).as_nanos());
+println!("overall: {}", (overall_end - overall_start).as_nanos());
+
+    // If this is still `at`, then the open set is empty but goal was never reached.
+    output
 }
 
 /// 64k animation frames ought to be enough for anybody!
