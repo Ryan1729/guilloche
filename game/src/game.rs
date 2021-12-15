@@ -9,6 +9,8 @@ macro_rules! compile_time_assert {
     }
 }
 
+use std::collections::HashMap;
+
 // In case we decide that we care about no_std/not directly allocating ourself
 pub trait ClearableStorage<A> {
     fn clear(&mut self);
@@ -1193,9 +1195,20 @@ impl Board {
         }
     }
 
+    fn is_walkable_with_cache(&self, is_walkable_cache: &mut IsWalkableCache, xy: tile::XY) -> bool {
+        *is_walkable_cache.entry(xy).or_insert_with(|| self.is_walkable(xy) )
+    }
+
+    #[allow(unused)]
     fn walkable_from(&self, at: tile::XY) -> impl Iterator<Item = tile::XY> + '_ {
         at.orthogonal_iter().filter(|&xy| {
             self.is_walkable(xy)
+        })
+    }
+
+    fn walkable_from_with_cache<'board, 'cache: 'board>(&'board self, is_walkable_cache: &'cache mut IsWalkableCache, at: tile::XY) -> impl Iterator<Item = tile::XY> + 'board {
+        at.orthogonal_iter().filter(|&xy| {
+            self.is_walkable_with_cache(is_walkable_cache, xy)
         })
     }
 }
@@ -1351,10 +1364,16 @@ struct WalkGoal {
     target: tile::XY,
 }
 
-fn next_walk_step(board: &Board, WalkGoal{at, target}: WalkGoal) -> tile::XY {
+type IsWalkableCache = HashMap<tile::XY, bool>;
+
+fn next_walk_step(
+    is_walkable_cache: &mut IsWalkableCache,
+    board: &Board,
+    WalkGoal{at, target}: WalkGoal
+) -> tile::XY {
     use std::time::{Instant};
 
-    use std::collections::{BinaryHeap, HashMap};
+    use std::collections::BinaryHeap;
     use core::cmp::Ordering;
 
     // The maximum possible length shortest path would be from one corner
@@ -1446,7 +1465,7 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
         // having to do the final O(log n) operations.
         open_set.pop();
 
-        for neighbor in board.walkable_from(current.xy) {
+        for neighbor in board.walkable_from_with_cache(is_walkable_cache, current.xy) {
             // tentative_g_score is the distance from start to the neighbor through
             // current
             let tentative_g_score =
@@ -1721,6 +1740,9 @@ pub fn update(
     if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
         &mut state.board,
     ) {
+        // TODO is it worth it to make this a per-frame thing?
+        let mut is_walkable_cache = HashMap::with_capacity(TILES_LENGTH);
+
         let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
 
         for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
@@ -1744,6 +1766,7 @@ pub fn update(
                             target,
                         };
                         let next = next_walk_step(
+                            &mut is_walkable_cache,
                             &state.board,
                             goal
                         );
@@ -1754,7 +1777,6 @@ pub fn update(
             }
         }
 
-        use std::collections::HashMap;
         let mut counts: HashMap<tile::XY, _> = HashMap::with_capacity(move_pairs.len());
         for &(_entity, xy) in &move_pairs {
             let counter = counts.entry(xy).or_insert(0);
