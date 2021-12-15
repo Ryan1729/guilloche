@@ -1441,6 +1441,7 @@ let allocation_start = overall_start;
 let allocation_end = Instant::now();
 let loop_start = allocation_end;
 let mut largest_innermost_loop_duration = std::time::Duration::default();
+let mut walkable_iter_next_total_duration = std::time::Duration::default();
 let mut innermost_loop_total_duration = std::time::Duration::default();
 
     let mut output = at;
@@ -1465,7 +1466,14 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
         // having to do the final O(log n) operations.
         open_set.pop();
 
-        for neighbor in board.walkable_from_with_cache(is_walkable_cache, current.xy) {
+        let mut walkable_iter = board.walkable_from_with_cache(is_walkable_cache, current.xy);
+
+        while let Some(neighbor) = {
+            let walkable_iter_next_start = Instant::now();
+            let next = walkable_iter.next();
+            walkable_iter_next_total_duration += Instant::now() - walkable_iter_next_start;
+            next
+        } {
             // tentative_g_score is the distance from start to the neighbor through
             // current
             let tentative_g_score =
@@ -1516,6 +1524,7 @@ let overall_end = loop_end;
 println!("allocation: {}", (allocation_end - allocation_start).as_nanos());
 println!("largest_innermost_loop_duration: {}", largest_innermost_loop_duration.as_nanos());
 println!("innermost_loop_total: {}", innermost_loop_total_duration.as_nanos());
+println!("walkable_iter_next_total: {}", walkable_iter_next_total_duration.as_nanos());
 println!("loop: {}", (loop_end - loop_start).as_nanos());
 println!("overall: {}", (overall_end - overall_start).as_nanos());
 
