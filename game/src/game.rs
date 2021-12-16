@@ -1212,21 +1212,10 @@ impl Board {
         }
     }
 
-    fn is_walkable_with_cache(&self, is_walkable_cache: &mut IsWalkableCache, xy: tile::XY) -> bool {
-        *is_walkable_cache.entry(xy).or_insert_with(|| self.is_walkable(xy) )
-    }
-
     #[allow(unused)]
     fn walkable_from(&self, at: tile::XY) -> impl Iterator<Item = tile::XY> + '_ {
         at.orthogonal_iter().filter(|&xy| {
             self.is_walkable(xy)
-        })
-    }
-
-    #[allow(unused)]
-    fn walkable_from_with_cache<'board, 'cache: 'board>(&'board self, is_walkable_cache: &'cache mut IsWalkableCache, at: tile::XY) -> impl Iterator<Item = tile::XY> + 'board {
-        at.orthogonal_iter().filter(|&xy| {
-            self.is_walkable_with_cache(is_walkable_cache, xy)
         })
     }
 
@@ -1389,8 +1378,6 @@ struct WalkGoal {
     at: tile::XY,
     target: tile::XY,
 }
-
-type IsWalkableCache = HashMap<tile::XY, bool>;
 
 fn next_walk_step(
     is_walkable_map: &IsWalkableMap,
