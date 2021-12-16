@@ -239,7 +239,11 @@ mod raylib_rs_platform {
                 Err(err) => err.duration(),
             };
 
-            duration.as_nanos()
+            let _ = duration.as_nanos();
+            // Trapped
+            1639281189649365947
+            // Three way lock
+            //1639281247244384158
         };
         println!("{}", seed);
 
