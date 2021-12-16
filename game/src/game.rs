@@ -1384,8 +1384,6 @@ fn next_walk_step(
     board: &Board,
     WalkGoal{at, target}: WalkGoal
 ) -> tile::XY {
-    use std::time::{Instant};
-
     use std::collections::BinaryHeap;
     use core::cmp::Ordering;
 
@@ -1397,8 +1395,7 @@ fn next_walk_step(
     // https://en.wikipedia.org/w/index.php?title=A*_search_algorithm&oldid=1055876705
     // The Rust BinaryHeap docs were also referenced.
     // We bake in manhattan_distance as the heuristic function.
-let overall_start = Instant::now();
-let allocation_start = overall_start;
+
     // For a given xy, came_from[xy] is the xy immediately preceding it on the
     // cheapest path from at to xy currently known.
     let mut came_from: HashMap<tile::XY, tile::XY>
@@ -1451,12 +1448,6 @@ let allocation_start = overall_start;
         f_score: 0,
     });
 
-let allocation_end = Instant::now();
-let loop_start = allocation_end;
-let mut largest_innermost_loop_duration = std::time::Duration::default();
-let mut walkable_iter_next_total_duration = std::time::Duration::default();
-let mut innermost_loop_total_duration = std::time::Duration::default();
-
     let mut output = at;
 
     while !open_set.is_empty() {
@@ -1479,14 +1470,7 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
         // having to do the final O(log n) operations.
         open_set.pop();
 
-        let mut walkable_iter = board.walkable_from_with_map(is_walkable_map, current.xy);
-
-        while let Some(neighbor) = {
-            let walkable_iter_next_start = Instant::now();
-            let next = walkable_iter.next();
-            walkable_iter_next_total_duration += Instant::now() - walkable_iter_next_start;
-            next
-        } {
+        for neighbor in board.walkable_from_with_map(is_walkable_map, current.xy) {
             // tentative_g_score is the distance from start to the neighbor through
             // current
             let tentative_g_score =
@@ -1502,7 +1486,6 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
                 came_from.insert(neighbor, current.xy);
                 g_score.insert(neighbor, tentative_g_score);
 
-                let innermost_loop_start = Instant::now();
                 // TODO take timings to see if this is the slow part, and if so
                 // keep a hashset of what is in the openset.
                 let mut not_already_there = true;
@@ -1512,12 +1495,6 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
                         break
                     }
                 }
-                let innermost_loop_end = Instant::now();
-                let innermost_loop_duration = innermost_loop_end - innermost_loop_start;
-                if innermost_loop_duration > largest_innermost_loop_duration {
-                    largest_innermost_loop_duration = innermost_loop_duration;
-                }
-                innermost_loop_total_duration += innermost_loop_duration;
 
                 if not_already_there {
                     open_set.push(ScoredXY {
@@ -1530,16 +1507,6 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
             }
         }
     }
-
-let loop_end = Instant::now();
-let overall_end = loop_end;
-
-println!("allocation: {}", (allocation_end - allocation_start).as_nanos());
-println!("largest_innermost_loop_duration: {}", largest_innermost_loop_duration.as_nanos());
-println!("innermost_loop_total: {}", innermost_loop_total_duration.as_nanos());
-println!("walkable_iter_next_total: {}", walkable_iter_next_total_duration.as_nanos());
-println!("loop: {}", (loop_end - loop_start).as_nanos());
-println!("overall: {}", (overall_end - overall_start).as_nanos());
 
     // If this is still `at`, then the open set is empty but goal was never reached.
     output
@@ -1766,7 +1733,6 @@ pub fn update(
     ) {
         // TODO is it worth it to make this a per-frame thing? Or maybe store it
         // across frames and update it?
-        let is_walkable_map_start = std::time::Instant::now();
         let mut is_walkable_map: IsWalkableMap = [false; TILES_LENGTH];
         for (i, element) in is_walkable_map.iter_mut().enumerate() {
             *element = state.board.tiles.tiles[i].kind.is_walkable();
@@ -1778,10 +1744,6 @@ pub fn update(
             }
         }
         is_walkable_map[tile::xy_to_i(state.board.xys[PLAYER_ENTITY])] = false;
-        println!(
-            "\n\nis_walkable_map_creation {}\n\n",
-            (std::time::Instant::now() - is_walkable_map_start).as_nanos()
-        );
 
         let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
 
