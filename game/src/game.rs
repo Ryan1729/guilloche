@@ -527,6 +527,12 @@ impl Default for TileKind {
     }
 }
 
+impl TileKind {
+    fn is_walkable(&self) -> bool {
+        *self == Self::Floor
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 struct TileData {
     kind: TileKind,
@@ -913,6 +919,17 @@ impl Default for Npc {
     }
 }
 
+impl Npc {
+    fn is_walkable(&self) -> bool {
+        match self {
+            Npc::Nobody => true,
+            Npc::Trade(_)
+            | Npc::NoTrade
+            | Npc::Agent(_) => false,
+        }
+    }
+}
+
 const MAX_NPCS_PER_GROUP: u8 = 2;
 const MAX_NPCS_PER_CHUNK: usize = TILE_GROUP_COUNT * MAX_NPCS_PER_GROUP as usize;
 
@@ -1177,7 +1194,7 @@ impl Board {
     }
 
     fn is_walkable(&self, xy: tile::XY) -> bool {
-        if self.tiles.tiles[tile::xy_to_i(xy)].kind == TileKind::Floor {
+        if self.tiles.tiles[tile::xy_to_i(xy)].kind.is_walkable() {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i] {
                     Npc::Nobody => break,
@@ -1206,9 +1223,18 @@ impl Board {
         })
     }
 
+    #[allow(unused)]
     fn walkable_from_with_cache<'board, 'cache: 'board>(&'board self, is_walkable_cache: &'cache mut IsWalkableCache, at: tile::XY) -> impl Iterator<Item = tile::XY> + 'board {
         at.orthogonal_iter().filter(|&xy| {
             self.is_walkable_with_cache(is_walkable_cache, xy)
+        })
+    }
+
+    fn walkable_from_with_map<'board, 'cache: 'board>(&'board self, is_walkable_map: &'cache IsWalkableMap, at: tile::XY) -> impl Iterator<Item = tile::XY> + 'board {
+        at.orthogonal_iter().filter(|&xy| {
+            let i = tile::xy_to_i(xy);
+
+            is_walkable_map[i]
         })
     }
 }
@@ -1367,7 +1393,7 @@ struct WalkGoal {
 type IsWalkableCache = HashMap<tile::XY, bool>;
 
 fn next_walk_step(
-    is_walkable_cache: &mut IsWalkableCache,
+    is_walkable_map: &IsWalkableMap,
     board: &Board,
     WalkGoal{at, target}: WalkGoal
 ) -> tile::XY {
@@ -1466,7 +1492,7 @@ let mut innermost_loop_total_duration = std::time::Duration::default();
         // having to do the final O(log n) operations.
         open_set.pop();
 
-        let mut walkable_iter = board.walkable_from_with_cache(is_walkable_cache, current.xy);
+        let mut walkable_iter = board.walkable_from_with_map(is_walkable_map, current.xy);
 
         while let Some(neighbor) = {
             let walkable_iter_next_start = Instant::now();
@@ -1632,6 +1658,8 @@ impl Input {
     }
 }
 
+type IsWalkableMap = [bool; TILES_LENGTH];
+
 pub fn update(
     state: &mut State,
     commands: &mut dyn ClearableStorage<draw::Command>,
@@ -1749,8 +1777,24 @@ pub fn update(
     if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
         &mut state.board,
     ) {
-        // TODO is it worth it to make this a per-frame thing?
-        let mut is_walkable_cache = HashMap::with_capacity(TILES_LENGTH);
+        // TODO is it worth it to make this a per-frame thing? Or maybe store it
+        // across frames and update it?
+        let is_walkable_map_start = std::time::Instant::now();
+        let mut is_walkable_map: IsWalkableMap = [false; TILES_LENGTH];
+        for (i, element) in is_walkable_map.iter_mut().enumerate() {
+            *element = state.board.tiles.tiles[i].kind.is_walkable();
+        }
+        for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+            if !state.board.npcs[entity].is_walkable() {
+                let i = tile::xy_to_i(state.board.xys[entity]);
+                is_walkable_map[i] = false;
+            }
+        }
+        is_walkable_map[tile::xy_to_i(state.board.xys[PLAYER_ENTITY])] = false;
+        println!(
+            "\n\nis_walkable_map_creation {}\n\n",
+            (std::time::Instant::now() - is_walkable_map_start).as_nanos()
+        );
 
         let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
 
@@ -1775,7 +1819,7 @@ pub fn update(
                             target,
                         };
                         let next = next_walk_step(
-                            &mut is_walkable_cache,
+                            &is_walkable_map,
                             &state.board,
                             goal
                         );
