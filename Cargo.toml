@@ -6,3 +6,8 @@ members = [
     "tile",
     "xs"
 ]
+
+# See https://doc.rust-lang.org/cargo/reference/profiles.html#overrides
+[profile.dev.package.tile]
+# The Pathfinding code is very slow without optimizations
+opt-level = 3
