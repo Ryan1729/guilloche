@@ -1,5 +1,6 @@
 #![deny(unused)]
 #![deny(bindings_with_variant_name)]
+#![deny(clippy::unused_self)]
 
 macro_rules! compile_time_assert {
     ($assertion: expr) => {
@@ -1218,14 +1219,6 @@ impl Board {
             self.is_walkable(xy)
         })
     }
-
-    fn walkable_from_with_map<'board, 'cache: 'board>(&'board self, is_walkable_map: &'cache IsWalkableMap, at: tile::XY) -> impl Iterator<Item = tile::XY> + 'board {
-        at.orthogonal_iter().filter(|&xy| {
-            let i = tile::xy_to_i(xy);
-
-            is_walkable_map[i]
-        })
-    }
 }
 
 type MoveVariant = u8;
@@ -1381,7 +1374,6 @@ struct WalkGoal {
 
 fn next_walk_step(
     is_walkable_map: &IsWalkableMap,
-    board: &Board,
     WalkGoal{at, target}: WalkGoal
 ) -> tile::XY {
     use std::collections::BinaryHeap;
@@ -1470,7 +1462,7 @@ fn next_walk_step(
         // having to do the final O(log n) operations.
         open_set.pop();
 
-        for neighbor in board.walkable_from_with_map(is_walkable_map, current.xy) {
+        for neighbor in walkable_from_iter(is_walkable_map, current.xy) {
             // tentative_g_score is the distance from start to the neighbor through
             // current
             let tentative_g_score =
@@ -1486,8 +1478,6 @@ fn next_walk_step(
                 came_from.insert(neighbor, current.xy);
                 g_score.insert(neighbor, tentative_g_score);
 
-                // TODO take timings to see if this is the slow part, and if so
-                // keep a hashset of what is in the openset.
                 let mut not_already_there = true;
                 for scored_xy in open_set.iter() {
                     if scored_xy.xy == neighbor {
@@ -1613,6 +1603,14 @@ impl Input {
 }
 
 type IsWalkableMap = [bool; TILES_LENGTH];
+
+fn walkable_from_iter(is_walkable_map: &IsWalkableMap, at: tile::XY) -> impl Iterator<Item = tile::XY> + '_ {
+    at.orthogonal_iter().filter(|&xy| {
+        let i = tile::xy_to_i(xy);
+
+        is_walkable_map[i]
+    })
+}
 
 pub fn update(
     state: &mut State,
@@ -1769,7 +1767,6 @@ pub fn update(
                         };
                         let next = next_walk_step(
                             &is_walkable_map,
-                            &state.board,
                             goal
                         );
 
