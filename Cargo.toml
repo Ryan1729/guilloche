@@ -3,5 +3,6 @@ members = [
     "guilloche",
     "game",
     "stbhw",
+    "tile",
     "xs"
 ]

@@ -9,6 +9,7 @@ path = "./src/game.rs"
 
 [dependencies]
 stbhw = { path = "../stbhw"}
+tile = { path = "../tile"}
 xs = { path = "../xs"}
 
 [features]

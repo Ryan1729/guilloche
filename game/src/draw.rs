@@ -82,10 +82,10 @@ pub struct Sizes {
 
 const LEFT_UI_WIDTH_TILES: TileCount = 9;
 const RIGHT_UI_WIDTH_TILES: TileCount = 9;
-const CENTER_UI_WIDTH_TILES: TileCount = if crate::tile::X::COUNT < crate::tile::Y::COUNT {
-    crate::tile::X::COUNT as _
+const CENTER_UI_WIDTH_TILES: TileCount = if tile::X::COUNT < tile::Y::COUNT {
+    tile::X::COUNT as _
 } else {
-    crate::tile::Y::COUNT as _
+    tile::Y::COUNT as _
 };
 const DRAW_WIDTH_TILES: TileCount = LEFT_UI_WIDTH_TILES 
     + CENTER_UI_WIDTH_TILES 

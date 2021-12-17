@@ -28,6 +28,7 @@ name = "game"
 version = "0.1.0"
 dependencies = [
  "stbhw",
+ "tile",
  "xs",
 ]
 
@@ -78,6 +79,13 @@ name = "stbhw"
 version = "0.1.0"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "tile"
+version = "0.1.0"
+dependencies = [
+ "xs",
 ]
 
 [[package]]
