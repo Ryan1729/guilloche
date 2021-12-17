@@ -232,7 +232,7 @@ impl Default for Dir {
 }
 
 mod tile {
-    use crate::{Xs, xs_u32};
+    use crate::xs::{Xs, xs_u32};
     use std::collections::HashMap;
 
     pub type Count = u32;
@@ -324,16 +324,18 @@ mod tile {
         }
     }
 
-    struct XYOrthoganalIter{
-        xys: [Option<XY>; crate::Dir::COUNT],
+    const ORTHOGONAL_COUNT: usize = 4; // We're in 2D.
+
+    struct XYOrthogonalIter{
+        xys: [Option<XY>; ORTHOGONAL_COUNT],
         index: usize
     }
 
-    impl XYOrthoganalIter {
+    impl XYOrthogonalIter {
         #[allow(unused_assignments)]
         fn new(xy: XY) -> Self {
-            let mut xys = [None; crate::Dir::COUNT];
-            compile_time_assert!(crate::Dir::COUNT < usize::MAX);
+            let mut xys = [None; ORTHOGONAL_COUNT];
+            compile_time_assert!(ORTHOGONAL_COUNT < usize::MAX);
 
             let mut i = 0;
             macro_rules! push {
@@ -353,18 +355,18 @@ mod tile {
             push!(move_right);
             push!(move_down);
 
-            XYOrthoganalIter {
+            XYOrthogonalIter {
                 xys,
                 index: 0,
             }
         }
     }
 
-    impl Iterator for XYOrthoganalIter {
+    impl Iterator for XYOrthogonalIter {
         type Item = XY;
 
         fn next(&mut self) -> Option<XY> {
-            let output = self.xys.get(self.index).and_then(|xy| xy.map(|xy| xy));
+            let output = self.xys.get(self.index).and_then(|&xy| xy);
             self.index += 1;
             output
         }
@@ -372,7 +374,7 @@ mod tile {
 
     impl XY {
         pub fn orthogonal_iter(self) -> impl Iterator<Item = Self> {
-            XYOrthoganalIter::new(self)
+            XYOrthogonalIter::new(self)
         }
 
         #[allow(unused)]
