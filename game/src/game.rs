@@ -126,6 +126,81 @@ impl Default for Dir {
     }
 }
 
+impl Dir {
+    /// The `Dir` 90 degrees clockwise from this one.
+    fn right(self) -> Self {
+        use Dir::*;
+        match self {
+            Up => Right,
+            UpRight => DownRight,
+            Right => Down,
+            DownRight => DownLeft,
+            Down => Left,
+            DownLeft => UpLeft,
+            Left => Up,
+            UpLeft => UpRight,
+        }
+    }
+
+    /// The `Dir` 90 degrees counter-clockwise from this one.
+    fn left(self) -> Self {
+        use Dir::*;
+        match self {
+            Up => Left,
+            UpRight => UpLeft,
+            Right => Up,
+            DownRight => UpRight,
+            Down => Right,
+            DownLeft => DownRight,
+            Left => Down,
+            UpLeft => DownLeft,
+        }
+    }
+
+    /// The `Dir` 180 degrees from this one.
+    fn backward(self) -> Self {
+        use Dir::*;
+        match self {
+            Up => Down,
+            UpRight => DownLeft,
+            Right => Left,
+            DownRight => UpLeft,
+            Down => Up,
+            DownLeft => UpRight,
+            Left => Right,
+            UpLeft => DownRight,
+        }
+    }
+}
+
+struct FromTo {
+    from: tile::XY,
+    to: tile::XY
+}
+
+enum DirOrPoint {
+    Point,
+    Dir(Dir)
+}
+
+impl DirOrPoint {
+    fn pointing(FromTo {from, to}: FromTo) -> Self {
+        use core::cmp::Ordering::*;
+        use Dir::*;
+        match (from.x.cmp(&to.x), from.y.cmp(&to.y)) {
+            (Less, Less) => Self::Dir(DownRight),
+            (Less, Equal) => Self::Dir(Right),
+            (Less, Greater) => Self::Dir(UpRight),
+            (Equal, Less) => Self::Dir(Down),
+            (Equal, Equal) => Self::Point,
+            (Equal, Greater) => Self::Dir(Up),
+            (Greater, Less) => Self::Dir(DownLeft),
+            (Greater, Equal) => Self::Dir(Left),
+            (Greater, Greater) => Self::Dir(UpLeft),
+        }
+    }
+}
+
 fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     DrawXY {
         x: sizes.board_xywh.x + sizes.board_xywh.w * (tile::Coord::from(txy.x) as DrawLength / tile::X::COUNT as DrawLength),
@@ -576,6 +651,7 @@ impl Default for AgentTarget {
 struct Agent {
     inventory: Inventory,
     target: AgentTarget,
+    previous_failed_move: Option<tile::XY>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -975,6 +1051,19 @@ fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
     }
 }
 
+fn can_move_xy(
+    is_walkable_map: &tile::IsWalkableMap,
+    xy: tile::XY,
+    dir: Dir,
+    variant: MoveVariant,
+) -> bool {
+    let mut moved_xy = xy;
+
+    move_xy(&mut moved_xy, dir, variant);
+
+    moved_xy != xy && is_walkable_map[tile::xy_to_i(moved_xy)]
+}
+
 // When/if we have a second use case, maybe make this a generic constant?
 // That is, something like `struct XYDeck<const COUNT: usize> {}`
 const XY_DECK_COUNT: usize = MAX_NPCS_PER_CHUNK * Dir::COUNT;
@@ -1291,18 +1380,87 @@ pub fn update(
             }
         }
 
+        // TODO can check for alternate move hand correct xy in move pairs here,
+        // before the counts? or will we need to do 2+ count passes?
+
         use std::collections::HashMap;
         let mut counts: HashMap<tile::XY, _> = HashMap::with_capacity(move_pairs.len());
-        for &(_entity, xy) in &move_pairs {
-            let counter = counts.entry(xy).or_insert(0);
-            *counter += 1;
+        macro_rules! count {
+            () => {
+                for &(_entity, xy) in &move_pairs {
+                    let counter = counts.entry(xy).or_insert(0);
+                    *counter += 1;
+                }
+            }
         }
 
+        count!();
+
+        for (entity, xy) in move_pairs.iter_mut() {
+            let entity = *entity;
+            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                // We can use [] since we just inserted every xy.
+                let could_move = counts[xy] == 1;
+
+                if !could_move {
+                    match agent.previous_failed_move {
+                        None => {},
+                        Some(failed_xy) if *xy == failed_xy => {
+                            if let DirOrPoint::Dir(forward_dir) = DirOrPoint::pointing(
+                                FromTo {
+                                    from: state.board.xys[entity],
+                                    to: *xy,
+                                }
+                            ) {
+                                for dir in [
+                                    forward_dir.right(),
+                                    forward_dir.left(),
+                                    forward_dir.backward()
+                                ] {
+                                    if can_move_xy(
+                                        &is_walkable_map,
+                                        *xy,
+                                        dir,
+                                        DIRECT_MOVE_VARIANT,
+                                    ) {
+                                        move_xy(
+                                            xy,
+                                            dir,
+                                            DIRECT_MOVE_VARIANT
+                                        );
+                                        // TODO maybe treat moving backwards specially to
+                                        // make the agents back up if there are two of them
+                                        // facing each other in a 1 wide hallway?
+
+                                        break;
+                                    }
+                                }
+                            }
+                        },
+                        Some(_) => {}
+                    }
+                }
+            }
+        }
+
+        // The above loop may have changed the counts.
+        counts.clear();
+
+        count!();
+
+        // Do the final moving
         for (entity, xy) in move_pairs {
             // We can use [] since we just inserted every xy.
             if counts[&xy] == 1 {
                 state.board.xys[entity] = xy;
+
+                // We moved successfuly, so the previous move was not failed.
+                if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                    agent.previous_failed_move = None;
+                }
             }
+
+
         }
     }
 

@@ -241,9 +241,9 @@ mod raylib_rs_platform {
 
             let _ = duration.as_nanos();
             // Trapped
-            1639281189649365947
+            //1639281189649365947
             // Three way lock
-            //1639281247244384158
+            1639281247244384158
         };
         println!("{}", seed);
 
