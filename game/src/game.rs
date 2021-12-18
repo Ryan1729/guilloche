@@ -1310,33 +1310,29 @@ pub fn update(
         }
 
         count!();
-        for _i in 0..crate::Dir::COUNT {
-            dbg!(_i);
-            let mut needs_another_pass = false;
-            for (_entity, xy) in &move_pairs {
-                // We can use [] since we just inserted every xy.
-                debug_assert_ne!(counts[xy], 0);
-                let could_move = counts[xy] == 1;
 
-                if !could_move {
-                    // If multiple agents are trying to enter a space at the same
-                    // time, then consider that
-                    is_walkable_map[tile::xy_to_i(*xy)] = false;
-                    needs_another_pass = true;
-                }
+        let mut needs_second_pass = false;
+        for (_entity, xy) in &move_pairs {
+            // We can use [] since we just inserted every xy.
+            debug_assert_ne!(counts[xy], 0);
+            let could_move = counts[xy] == 1;
+
+            if !could_move {
+                // If multiple agents are trying to enter a space at the same
+                // time, then consider that
+                is_walkable_map[tile::xy_to_i(*xy)] = false;
+                needs_second_pass = true;
             }
+        }
 
-            if needs_another_pass {
-                // The above loop has changed the is_walkable_map, which means the
-                // move_pairs and the counts need to be recalculated.
-                move_pairs.clear();
-                counts.clear();
+        if needs_second_pass {
+            // The above loop has changed the is_walkable_map, which means the
+            // move_pairs and the counts need to be recalculated.
+            move_pairs.clear();
+            counts.clear();
 
-                fill_move_pairs!();
-                count!();
-            } else {
-                break
-            }
+            fill_move_pairs!();
+            count!();
         }
 
         // Do the final moving
