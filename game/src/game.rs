@@ -1406,6 +1406,7 @@ pub fn update(
                     match agent.previous_failed_move {
                         None => {},
                         Some(failed_xy) if *xy == failed_xy => {
+                            dbg!();
                             if let DirOrPoint::Dir(forward_dir) = DirOrPoint::pointing(
                                 FromTo {
                                     from: state.board.xys[entity],
@@ -1450,17 +1451,17 @@ pub fn update(
 
         // Do the final moving
         for (entity, xy) in move_pairs {
-            // We can use [] since we just inserted every xy.
-            if counts[&xy] == 1 {
-                state.board.xys[entity] = xy;
+            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                // We can use [] since we just inserted every xy.
+                if counts[&xy] == 1 {
+                    state.board.xys[entity] = xy;
 
-                // We moved successfuly, so the previous move was not failed.
-                if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                    // We moved successfuly, so the previous move was not failed.
                     agent.previous_failed_move = None;
+                } else {
+                    agent.previous_failed_move = Some(xy);
                 }
             }
-
-
         }
     }
 
