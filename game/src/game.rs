@@ -576,7 +576,6 @@ impl Default for AgentTarget {
 struct Agent {
     inventory: Inventory,
     target: AgentTarget,
-    previous_failed_move: Option<tile::XY>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1337,16 +1336,9 @@ pub fn update(
 
         // Do the final moving
         for (entity, xy) in move_pairs {
-            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
-                // We can use [] since we just inserted every xy.
-                if counts[&xy] == 1 {
-                    state.board.xys[entity] = xy;
-
-                    // We moved successfuly, so the previous move was not failed.
-                    agent.previous_failed_move = None;
-                } else {
-                    agent.previous_failed_move = Some(xy);
-                }
+            // We can use [] since we just inserted every xy.
+            if counts[&xy] == 1 {
+                state.board.xys[entity] = xy;
             }
         }
     }
