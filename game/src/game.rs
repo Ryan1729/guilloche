@@ -126,81 +126,6 @@ impl Default for Dir {
     }
 }
 
-impl Dir {
-    /// The `Dir` 90 degrees clockwise from this one.
-    fn right(self) -> Self {
-        use Dir::*;
-        match self {
-            Up => Right,
-            UpRight => DownRight,
-            Right => Down,
-            DownRight => DownLeft,
-            Down => Left,
-            DownLeft => UpLeft,
-            Left => Up,
-            UpLeft => UpRight,
-        }
-    }
-
-    /// The `Dir` 90 degrees counter-clockwise from this one.
-    fn left(self) -> Self {
-        use Dir::*;
-        match self {
-            Up => Left,
-            UpRight => UpLeft,
-            Right => Up,
-            DownRight => UpRight,
-            Down => Right,
-            DownLeft => DownRight,
-            Left => Down,
-            UpLeft => DownLeft,
-        }
-    }
-
-    /// The `Dir` 180 degrees from this one.
-    fn backward(self) -> Self {
-        use Dir::*;
-        match self {
-            Up => Down,
-            UpRight => DownLeft,
-            Right => Left,
-            DownRight => UpLeft,
-            Down => Up,
-            DownLeft => UpRight,
-            Left => Right,
-            UpLeft => DownRight,
-        }
-    }
-}
-
-struct FromTo {
-    from: tile::XY,
-    to: tile::XY
-}
-
-enum DirOrPoint {
-    Point,
-    Dir(Dir)
-}
-
-impl DirOrPoint {
-    fn pointing(FromTo {from, to}: FromTo) -> Self {
-        use core::cmp::Ordering::*;
-        use Dir::*;
-        match (from.x.cmp(&to.x), from.y.cmp(&to.y)) {
-            (Less, Less) => Self::Dir(DownRight),
-            (Less, Equal) => Self::Dir(Right),
-            (Less, Greater) => Self::Dir(UpRight),
-            (Equal, Less) => Self::Dir(Down),
-            (Equal, Equal) => Self::Point,
-            (Equal, Greater) => Self::Dir(Up),
-            (Greater, Less) => Self::Dir(DownLeft),
-            (Greater, Equal) => Self::Dir(Left),
-            (Greater, Greater) => Self::Dir(UpLeft),
-        }
-    }
-}
-
 fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     DrawXY {
         x: sizes.board_xywh.x + sizes.board_xywh.w * (tile::Coord::from(txy.x) as DrawLength / tile::X::COUNT as DrawLength),
@@ -1051,19 +976,6 @@ fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
     }
 }
 
-fn can_move_xy(
-    is_walkable_map: &tile::IsWalkableMap,
-    xy: tile::XY,
-    dir: Dir,
-    variant: MoveVariant,
-) -> bool {
-    let mut moved_xy = xy;
-
-    move_xy(&mut moved_xy, dir, variant);
-
-    moved_xy != xy && is_walkable_map[tile::xy_to_i(moved_xy)]
-}
-
 // When/if we have a second use case, maybe make this a generic constant?
 // That is, something like `struct XYDeck<const COUNT: usize> {}`
 const XY_DECK_COUNT: usize = MAX_NPCS_PER_CHUNK * Dir::COUNT;
@@ -1349,39 +1261,42 @@ pub fn update(
 
         let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
 
-        for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
-                use AgentTarget::*;
-                match agent.target {
-                    NoTarget => {
-                        // It is, of course, possible that the location will not be
-                        // walkable by the time we get there. A form of the TOCTOU
-                        // problem. The agent will need to deal with this when they
-                        // get closer to there. Similarly they will also need to
-                        // deal with the possibility of multiple agents having the
-                        // same target, or the trader not being active at that time.
-                        agent.target = Target(
-                            trader_xy_deck.draw(&mut state.board.rng)
-                        );
-                    },
-                    Target(target) => {
-                        let goal = tile::WalkGoal {
-                            at: state.board.xys[entity],
-                            target,
-                        };
-                        let next = tile::next_walk_step(
-                            &is_walkable_map,
-                            goal
-                        );
-
-                        move_pairs.push((entity, next));
+        macro_rules! fill_move_pairs {
+            () => {
+                for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                    if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                        use AgentTarget::*;
+                        match agent.target {
+                            NoTarget => {
+                                // It is, of course, possible that the location will not be
+                                // walkable by the time we get there. A form of the TOCTOU
+                                // problem. The agent will need to deal with this when they
+                                // get closer to there. Similarly they will also need to
+                                // deal with the possibility of multiple agents having the
+                                // same target, or the trader not being active at that time.
+                                agent.target = Target(
+                                    trader_xy_deck.draw(&mut state.board.rng)
+                                );
+                            },
+                            Target(target) => {
+                                let goal = tile::WalkGoal {
+                                    at: state.board.xys[entity],
+                                    target,
+                                };
+                                let next = tile::next_walk_step(
+                                    &is_walkable_map,
+                                    goal
+                                );
+        
+                                move_pairs.push((entity, next));
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // TODO can check for alternate move hand correct xy in move pairs here,
-        // before the counts? or will we need to do 2+ count passes?
+        fill_move_pairs!();
 
         use std::collections::HashMap;
         let mut counts: HashMap<tile::XY, _> = HashMap::with_capacity(move_pairs.len());
@@ -1396,58 +1311,29 @@ pub fn update(
 
         count!();
 
-        for (entity, xy) in move_pairs.iter_mut() {
-            let entity = *entity;
-            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
-                // We can use [] since we just inserted every xy.
-                let could_move = counts[xy] == 1;
+        let mut needs_second_pass = false;
+        for (_entity, xy) in &move_pairs {
+            // We can use [] since we just inserted every xy.
+            debug_assert_ne!(counts[xy], 0);
+            let could_move = counts[xy] == 1;
 
-                if !could_move {
-                    match agent.previous_failed_move {
-                        None => {},
-                        Some(failed_xy) if *xy == failed_xy => {
-                            dbg!();
-                            if let DirOrPoint::Dir(forward_dir) = DirOrPoint::pointing(
-                                FromTo {
-                                    from: state.board.xys[entity],
-                                    to: *xy,
-                                }
-                            ) {
-                                for dir in [
-                                    forward_dir.right(),
-                                    forward_dir.left(),
-                                    forward_dir.backward()
-                                ] {
-                                    if can_move_xy(
-                                        &is_walkable_map,
-                                        *xy,
-                                        dir,
-                                        DIRECT_MOVE_VARIANT,
-                                    ) {
-                                        move_xy(
-                                            xy,
-                                            dir,
-                                            DIRECT_MOVE_VARIANT
-                                        );
-                                        // TODO maybe treat moving backwards specially to
-                                        // make the agents back up if there are two of them
-                                        // facing each other in a 1 wide hallway?
-
-                                        break;
-                                    }
-                                }
-                            }
-                        },
-                        Some(_) => {}
-                    }
-                }
+            if !could_move {
+                // If multiple agents are trying to enter a space at the same
+                // time, then consider that 
+                is_walkable_map[tile::xy_to_i(*xy)] = false;
+                needs_second_pass = true;
             }
         }
-
-        // The above loop may have changed the counts.
-        counts.clear();
-
-        count!();
+        
+        if needs_second_pass {
+            // The above loop has changed the is_walkable_map, which means the 
+            // move_pairs and the counts need to be recalculated. 
+            move_pairs.clear();
+            counts.clear();
+    
+            fill_move_pairs!();
+            count!();
+        }
 
         // Do the final moving
         for (entity, xy) in move_pairs {
