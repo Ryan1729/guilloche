@@ -587,9 +587,9 @@ struct Agent {
     target: AgentTarget,
     // TODO don't allocate if this actually solves the problem.
     // Maybe something like:
-    //previous_failed_moves: [Option<tile::XY>; 4],
-    previous_failed_moves: Vec<tile::XY>,
-    last_previous_failed_moves_len: u8,
+    //previous_blocked_moves: [Option<tile::XY>; 4],
+    previous_blocked_moves: Vec<tile::XY>,
+    blocked_forget_timer: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1264,14 +1264,21 @@ pub fn update(
         for (i, element) in is_walkable_map.iter_mut().enumerate() {
             *element = state.board.tiles.tiles[i].kind.is_walkable();
         }
+        let mut is_walkable_map_non_agents_only: tile::IsWalkableMap = is_walkable_map;
         for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
             if !state.board.npcs[entity].is_walkable() {
                 let i = tile::xy_to_i(state.board.xys[entity]);
                 is_walkable_map[i] = false;
+                
+                if let Npc::Agent(_) = state.board.npcs[entity] {
+                    is_walkable_map_non_agents_only[i] = true;
+                } else {
+                    is_walkable_map_non_agents_only[i] = false;
+                }
             }
 
             if let Npc::Agent(ref agent) = state.board.npcs[entity] {
-                for &xy in &agent.previous_failed_moves {
+                for &xy in &agent.previous_blocked_moves {
                     let i = tile::xy_to_i(xy);
                     is_walkable_map[i] = false;
                 }
@@ -1332,30 +1339,48 @@ pub fn update(
         count!();
 
         let mut needs_second_pass = false;
-        for (entity, xy) in &move_pairs {
+        for (_entity, xy) in &move_pairs {
             // We can use [] since we just inserted every xy.
             debug_assert_ne!(counts[xy], 0);
             let could_move = counts[xy] == 1;
 
             if !could_move {
-                dbg!();
                 // If multiple agents are trying to enter a space at the same
                 // time, then consider that.
                 is_walkable_map[tile::xy_to_i(*xy)] = false;
                 needs_second_pass = true;
+                dbg!();
+            }
+        }
 
-                if let Npc::Agent(ref mut agent) = state.board.npcs[*entity] {
-                    let len = agent.previous_failed_moves.len();
-                    if len < 4 {
-                        agent.previous_failed_moves.push(*xy);
-                        agent.last_previous_failed_moves_len = len as u8;
+        for (entity, xy) in &move_pairs {
+            if let Npc::Agent(ref mut agent) = state.board.npcs[*entity] {
+                use AgentTarget::*;
+                match agent.target {
+                    NoTarget => {},
+                    Target(target) => {
+                        let goal = tile::WalkGoal {
+                            at: state.board.xys[*entity],
+                            target,
+                        };
+                        let next_tiles_only = tile::next_walk_step(
+                            &is_walkable_map_non_agents_only,
+                            goal
+                        );
+                        
+                        if next_tiles_only != *xy {
+                            if agent.previous_blocked_moves.len() < 4 {
+                                agent.previous_blocked_moves.push(*xy);
+                            }
+                            dbg!(&agent.previous_blocked_moves);
+                        }
                     }
                 }
             }
         }
 
         if needs_second_pass {
-            // The above loop has changed the is_walkable_map, which means the
+            // The is_walkable_map has changed, which means the
             // move_pairs and the counts need to be recalculated.
             move_pairs.clear();
             counts.clear();
@@ -1373,14 +1398,11 @@ pub fn update(
 
                     // We need to drain these out eventually but we also need them
                     // to hang around for a bit to be effective.
-                    if 
-                        agent.previous_failed_moves.len() 
-                        >= agent.last_previous_failed_moves_len as usize
-                    {
-                        agent.previous_failed_moves.pop();
-                        agent.last_previous_failed_moves_len 
-                            = agent.last_previous_failed_moves_len
-                                .saturating_sub(1);
+                    // TODO maybe filter out based on distance to current xy instead?
+                    agent.blocked_forget_timer += 1;
+                    if agent.blocked_forget_timer >= 8 {
+                        agent.previous_blocked_moves.pop();
+                        agent.blocked_forget_timer = 0;
                     }
                 }
             }
@@ -1585,7 +1607,7 @@ pub fn update(
                     },
                     Npc::Agent(agent) => {
                         agent_text.push_str(
-                            &format!("{:?}\n", agent.previous_failed_moves)
+                            &format!("{:?}\n", agent.previous_blocked_moves)
                         );
                     },
                 }
