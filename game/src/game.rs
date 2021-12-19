@@ -134,6 +134,7 @@ fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     }
 }
 
+#[cfg(feature = "debug-viz")]
 fn tile_edge_to_tile_center(sizes: &Sizes, xy: DrawXY) -> DrawXY {
     DrawXY {
         x: xy.x + sizes.tile_side_length/2.,
@@ -1418,7 +1419,8 @@ pub fn update(
                             ),
                             xy: target_draw_xy,
                         }));
-
+                        
+                        #[cfg(feature = "debug-viz")]
                         commands.push(Line(LineSpec{
                             start: tile_edge_to_tile_center(&state.sizes, draw_xy),
                             end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
@@ -1497,45 +1499,45 @@ pub fn update(
         },
     }
 
-    // TODO make this debug text toggleable?
-    /*
-    let left_text_x = state.sizes.play_xywh.x + MARGIN;
-
-    let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
-
+    #[cfg(feature = "debug-viz")]
     {
-        let mut y = MARGIN;
-
-        commands.push(Text(TextSpec{
-            text: format!(
-                "input: {:?}",
-                input
-            ),
-            xy: DrawXY { x: left_text_x, y },
-            wh: DrawWH {
-                w: state.sizes.play_xywh.w,
-                h: small_section_h
-            },
-            kind: TextKind::UI,
-        }));
-
-        y += small_section_h;
-
-        commands.push(Text(TextSpec{
-            text: format!(
-                "sizes: {:?}\nanimation_timer: {:?}",
-                state.sizes,
-                state.animation_timer
-            ),
-            xy: DrawXY { x: left_text_x, y },
-            wh: DrawWH {
-                w: state.sizes.play_xywh.w,
-                h: state.sizes.play_xywh.h - y
-            },
-            kind: TextKind::UI,
-        }));
+        let left_text_x = state.sizes.play_xywh.x + MARGIN;
+    
+        let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
+    
+        {
+            let mut y = MARGIN;
+    
+            commands.push(Text(TextSpec{
+                text: format!(
+                    "input: {:?}",
+                    input
+                ),
+                xy: DrawXY { x: left_text_x, y },
+                wh: DrawWH {
+                    w: state.sizes.play_xywh.w,
+                    h: small_section_h
+                },
+                kind: TextKind::UI,
+            }));
+    
+            y += small_section_h;
+    
+            commands.push(Text(TextSpec{
+                text: format!(
+                    "sizes: {:?}\nanimation_timer: {:?}",
+                    state.sizes,
+                    state.animation_timer
+                ),
+                xy: DrawXY { x: left_text_x, y },
+                wh: DrawWH {
+                    w: state.sizes.play_xywh.w,
+                    h: state.sizes.play_xywh.h - y
+                },
+                kind: TextKind::UI,
+            }));
+        }
     }
-    */
 
     state.animation_timer += 1;
     if state.animation_timer >= ANIMATION_TIMER_LENGTH {

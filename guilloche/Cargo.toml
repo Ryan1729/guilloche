@@ -11,3 +11,4 @@ raylib = { version = "3.5" }
 
 [features]
 default = []
+debug-viz = ["game/debug-viz"]

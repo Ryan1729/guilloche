@@ -13,4 +13,5 @@ tile = { path = "../tile"}
 xs = { path = "../xs"}
 
 [features]
-
+defaults = []
+debug-viz = []
