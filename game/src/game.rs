@@ -581,13 +581,18 @@ impl Default for AgentTarget {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Agent {
     inventory: Inventory,
     target: AgentTarget,
+    // TODO don't allocate if this actually solves the problem.
+    // Maybe something like:
+    //previous_failed_moves: [Option<tile::XY>; 4],
+    previous_failed_moves: Vec<tile::XY>,
+    last_previous_failed_moves_len: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Npc {
     Nobody,
     Trade(Trade),
@@ -620,7 +625,7 @@ struct Npcs([Npc; MAX_NPCS_PER_CHUNK]);
 
 impl Default for Npcs {
     fn default() -> Self {
-        Self([<_>::default(); MAX_NPCS_PER_CHUNK])
+        Self([(); MAX_NPCS_PER_CHUNK].map(|_| <_>::default()))
     }
 }
 
@@ -664,14 +669,14 @@ impl Default for Speech {
     }
 }
 
-impl From<Npc> for Speech {
-    fn from(npc: Npc) -> Self {
+impl From<&Npc> for Speech {
+    fn from(npc: &Npc) -> Self {
         match npc {
             Npc::Nobody
             | Npc::NoTrade
             // Later, we can have the agent make trades too.
             | Npc::Agent(_) => Self::Silence,
-            Npc::Trade(trade) => Self::Trade(trade),
+            Npc::Trade(trade) => Self::Trade(*trade),
         }
     }
 }
@@ -1215,7 +1220,7 @@ pub fn update(
 
                 for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                     if state.board.xys[entity] == target {
-                        let target_speech = state.board.npcs[entity].into();
+                        let target_speech = (&state.board.npcs[entity]).into();
 
                         state.board.speech = match state.board.speech {
                             Speech::Silence => target_speech,
@@ -1263,6 +1268,13 @@ pub fn update(
             if !state.board.npcs[entity].is_walkable() {
                 let i = tile::xy_to_i(state.board.xys[entity]);
                 is_walkable_map[i] = false;
+            }
+
+            if let Npc::Agent(ref agent) = state.board.npcs[entity] {
+                for &xy in &agent.previous_failed_moves {
+                    let i = tile::xy_to_i(xy);
+                    is_walkable_map[i] = false;
+                }
             }
         }
         is_walkable_map[tile::xy_to_i(state.board.xys[PLAYER_ENTITY])] = false;
@@ -1320,16 +1332,25 @@ pub fn update(
         count!();
 
         let mut needs_second_pass = false;
-        for (_entity, xy) in &move_pairs {
+        for (entity, xy) in &move_pairs {
             // We can use [] since we just inserted every xy.
             debug_assert_ne!(counts[xy], 0);
             let could_move = counts[xy] == 1;
 
             if !could_move {
+                dbg!();
                 // If multiple agents are trying to enter a space at the same
-                // time, then consider that
+                // time, then consider that.
                 is_walkable_map[tile::xy_to_i(*xy)] = false;
                 needs_second_pass = true;
+
+                if let Npc::Agent(ref mut agent) = state.board.npcs[*entity] {
+                    let len = agent.previous_failed_moves.len();
+                    if len < 4 {
+                        agent.previous_failed_moves.push(*xy);
+                        agent.last_previous_failed_moves_len = len as u8;
+                    }
+                }
             }
         }
 
@@ -1345,9 +1366,23 @@ pub fn update(
 
         // Do the final moving
         for (entity, xy) in move_pairs {
-            // We can use [] since we just inserted every xy.
-            if counts[&xy] == 1 {
-                state.board.xys[entity] = xy;
+            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+                // We can use [] since we just inserted every xy.
+                if counts[&xy] == 1 {                
+                    state.board.xys[entity] = xy;
+
+                    // We need to drain these out eventually but we also need them
+                    // to hang around for a bit to be effective.
+                    if 
+                        agent.previous_failed_moves.len() 
+                        >= agent.last_previous_failed_moves_len as usize
+                    {
+                        agent.previous_failed_moves.pop();
+                        agent.last_previous_failed_moves_len 
+                            = agent.last_previous_failed_moves_len
+                                .saturating_sub(1);
+                    }
+                }
             }
         }
     }
@@ -1368,7 +1403,7 @@ pub fn update(
     }
 
     for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-        match state.board.npcs[i as usize] {
+        match &state.board.npcs[i as usize] {
             Npc::Nobody => break,
             Npc::Trade(_) => {
                 commands.push(Sprite(SpriteSpec{
@@ -1521,7 +1556,7 @@ pub fn update(
                 kind: TextKind::UI,
             }));
     
-            y += small_section_h;
+            /*y += small_section_h;
     
             commands.push(Text(TextSpec{
                 text: format!(
@@ -1529,6 +1564,35 @@ pub fn update(
                     state.sizes,
                     state.animation_timer
                 ),
+                xy: DrawXY { x: left_text_x, y },
+                wh: DrawWH {
+                    w: state.sizes.play_xywh.w,
+                    h: state.sizes.play_xywh.h - y
+                },
+                kind: TextKind::UI,
+            }));*/
+
+            y += small_section_h;
+    
+            let mut agent_text = String::with_capacity(256);
+
+            for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                match &state.board.npcs[i as usize] {
+                    Npc::Nobody => break,
+                    Npc::Trade(_)
+                    | Npc::NoTrade => {
+                        
+                    },
+                    Npc::Agent(agent) => {
+                        agent_text.push_str(
+                            &format!("{:?}\n", agent.previous_failed_moves)
+                        );
+                    },
+                }
+            }
+
+            commands.push(Text(TextSpec{
+                text: agent_text,
                 xy: DrawXY { x: left_text_x, y },
                 wh: DrawWH {
                     w: state.sizes.play_xywh.w,
