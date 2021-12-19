@@ -473,6 +473,20 @@ mod raylib_rs_platform {
                                 },
                             };
                         }
+                        Line(l) => {
+                            shader_d.draw_line_ex(
+                                Vector2 {
+                                    x: l.start.x,
+                                    y: l.start.y,
+                                },
+                                Vector2 {
+                                    x: l.end.x,
+                                    y: l.end.y,
+                                },
+                                3.,
+                                TEXT
+                            );
+                        }
                     }
                 }
 

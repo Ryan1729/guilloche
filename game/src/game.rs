@@ -45,6 +45,7 @@ pub use draw::{
     EyeSpriteKind,
     EyeVariant,
     SpriteSpec,
+    LineSpec,
     Sizes,
 };
 
@@ -130,6 +131,13 @@ fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     DrawXY {
         x: sizes.board_xywh.x + sizes.board_xywh.w * (tile::Coord::from(txy.x) as DrawLength / tile::X::COUNT as DrawLength),
         y: sizes.board_xywh.y + sizes.board_xywh.h * (tile::Coord::from(txy.y) as DrawLength / tile::Y::COUNT as DrawLength),
+    }
+}
+
+fn tile_edge_to_tile_center(sizes: &Sizes, xy: DrawXY) -> DrawXY {
+    DrawXY {
+        x: xy.x + sizes.tile_side_length/2.,
+        y: xy.y + sizes.tile_side_length/2.,
     }
 }
 
@@ -1381,18 +1389,24 @@ pub fn update(
             },
             Npc::Agent(agent) => {
                 let xy = state.board.xys[i];
+                let draw_xy = draw_xy_from_tile(&state.sizes, xy);
                 commands.push(Sprite(SpriteSpec{
                     sprite: SpriteKind::Eye(
                         EyeVariant::Agent,
                         state.board.eye_states[i].sprite()
                     ),
-                    xy: draw_xy_from_tile(&state.sizes, xy),
+                    xy: draw_xy,
                 }));
 
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
                     Target(target) => {
+                        let target_draw_xy = draw_xy_from_tile(
+                            &state.sizes,
+                            target
+                        );
+
                         commands.push(Sprite(SpriteSpec{
                             sprite: SpriteKind::Arrow(
                                 <_>::default(),
@@ -1402,7 +1416,12 @@ pub fn update(
                                     ArrowKind::Red
                                 }
                             ),
-                            xy: draw_xy_from_tile(&state.sizes, target),
+                            xy: target_draw_xy,
+                        }));
+
+                        commands.push(Line(LineSpec{
+                            start: tile_edge_to_tile_center(&state.sizes, draw_xy),
+                            end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
                         }));
                     }
                 }

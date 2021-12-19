@@ -177,6 +177,7 @@ impl Default for SpriteKind {
 pub enum Command {
     Sprite(SpriteSpec),
     Text(TextSpec),
+    Line(LineSpec),
 }
 
 #[derive(Debug)]
@@ -199,4 +200,10 @@ pub struct TextSpec {
     /// a font size directly.
     pub wh: DrawWH,
     pub kind: TextKind,
+}
+
+#[derive(Debug)]
+pub struct LineSpec {
+    pub start: DrawXY,
+    pub end: DrawXY,
 }
