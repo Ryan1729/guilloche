@@ -1573,9 +1573,9 @@ pub fn update(
 
         let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
 
+        #[allow(unused_mut)]
+        let mut y = MARGIN;
         {
-            let mut y = MARGIN;
-
             commands.push(Text(TextSpec{
                 text: format!(
                     "input: {:?}",
@@ -1589,50 +1589,56 @@ pub fn update(
                 kind: TextKind::UI,
             }));
 
-            /*y += small_section_h;
+            #[cfg(any())]
+            {
+                y += small_section_h;
 
-            commands.push(Text(TextSpec{
-                text: format!(
-                    "sizes: {:?}\nanimation_timer: {:?}",
-                    state.sizes,
-                    state.animation_timer
-                ),
-                xy: DrawXY { x: left_text_x, y },
-                wh: DrawWH {
-                    w: state.sizes.play_xywh.w,
-                    h: state.sizes.play_xywh.h - y
-                },
-                kind: TextKind::UI,
-            }));*/
-
-            y += small_section_h;
-
-            let mut agent_text = String::with_capacity(256);
-
-            for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                match &state.board.npcs[i as usize] {
-                    Npc::Nobody => break,
-                    Npc::Trade(_)
-                    | Npc::NoTrade => {
-
+                commands.push(Text(TextSpec{
+                    text: format!(
+                        "sizes: {:?}\nanimation_timer: {:?}",
+                        state.sizes,
+                        state.animation_timer
+                    ),
+                    xy: DrawXY { x: left_text_x, y },
+                    wh: DrawWH {
+                        w: state.sizes.play_xywh.w,
+                        h: state.sizes.play_xywh.h - y
                     },
-                    Npc::Agent(agent) => {
-                        agent_text.push_str(
-                            &format!("{:?}\n", agent.previous_blocked_moves)
-                        );
-                    },
-                }
+                    kind: TextKind::UI,
+                }));
             }
 
-            commands.push(Text(TextSpec{
-                text: agent_text,
-                xy: DrawXY { x: left_text_x, y },
-                wh: DrawWH {
-                    w: state.sizes.play_xywh.w,
-                    h: state.sizes.play_xywh.h - y
-                },
-                kind: TextKind::UI,
-            }));
+            #[cfg(any())]
+            {
+                y += small_section_h;
+
+                let mut agent_text = String::with_capacity(256);
+
+                for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                    match &state.board.npcs[i as usize] {
+                        Npc::Nobody => break,
+                        Npc::Trade(_)
+                        | Npc::NoTrade => {
+
+                        },
+                        Npc::Agent(agent) => {
+                            agent_text.push_str(
+                                &format!("{:?}\n", agent.previous_blocked_moves)
+                            );
+                        },
+                    }
+                }
+
+                commands.push(Text(TextSpec{
+                    text: agent_text,
+                    xy: DrawXY { x: left_text_x, y },
+                    wh: DrawWH {
+                        w: state.sizes.play_xywh.w,
+                        h: state.sizes.play_xywh.h - y
+                    },
+                    kind: TextKind::UI,
+                }));
+            }
         }
     }
 
