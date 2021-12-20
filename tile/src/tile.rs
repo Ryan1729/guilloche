@@ -236,7 +236,7 @@ pub const TILES_WIDTH: usize = X::COUNT as _;
 pub const TILES_HEIGHT: usize = Y::COUNT as _;
 pub const TILES_LENGTH: usize = XY::COUNT as _;
 
-fn manhattan_distance(
+pub fn manhattan_distance(
     XY{ x: x1, y: y1 }: XY,
     XY{ x: x2, y: y2 }: XY
 ) -> Distance {

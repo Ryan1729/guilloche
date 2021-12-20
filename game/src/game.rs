@@ -585,10 +585,7 @@ impl Default for AgentTarget {
 struct Agent {
     inventory: Inventory,
     target: AgentTarget,
-    // TODO don't allocate if this actually solves the problem.
-    // Maybe something like:
-    //previous_blocked_moves: [Option<tile::XY>; 4],
-    previous_blocked_moves: Vec<tile::XY>,
+    previous_blocked_moves: [Option<tile::XY>; 4],
     blocked_forget_timer: u8,
 }
 
@@ -1269,7 +1266,7 @@ pub fn update(
             if !state.board.npcs[entity].is_walkable() {
                 let i = tile::xy_to_i(state.board.xys[entity]);
                 is_walkable_map[i] = false;
-                
+
                 if let Npc::Agent(_) = state.board.npcs[entity] {
                     is_walkable_map_non_agents_only[i] = true;
                 } else {
@@ -1278,9 +1275,13 @@ pub fn update(
             }
 
             if let Npc::Agent(ref agent) = state.board.npcs[entity] {
-                for &xy in &agent.previous_blocked_moves {
-                    let i = tile::xy_to_i(xy);
-                    is_walkable_map[i] = false;
+                for xy_opt in &agent.previous_blocked_moves {
+                    if let Some(xy) = xy_opt {
+                        let i = tile::xy_to_i(*xy);
+                        is_walkable_map[i] = false;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -1367,12 +1368,14 @@ pub fn update(
                             &is_walkable_map_non_agents_only,
                             goal
                         );
-                        
+
                         if next_tiles_only != *xy {
-                            if agent.previous_blocked_moves.len() < 4 {
-                                agent.previous_blocked_moves.push(*xy);
+                            for i in 0..agent.previous_blocked_moves.len() {
+                                if agent.previous_blocked_moves[i].is_none() {
+                                    agent.previous_blocked_moves[i] = Some(*xy);
+                                    break;
+                                }
                             }
-                            dbg!(&agent.previous_blocked_moves);
                         }
                     }
                 }
@@ -1390,20 +1393,28 @@ pub fn update(
         }
 
         // Do the final moving
-        for (entity, xy) in move_pairs {
+        for (entity, target_xy) in move_pairs {
             if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
                 // We can use [] since we just inserted every xy.
-                if counts[&xy] == 1 {                
-                    state.board.xys[entity] = xy;
+                if counts[&target_xy] == 1 {
+                    state.board.xys[entity] = target_xy;
 
                     // We need to drain these out eventually but we also need them
                     // to hang around for a bit to be effective.
                     // TODO maybe filter out based on distance to current xy instead?
-                    agent.blocked_forget_timer += 1;
-                    if agent.blocked_forget_timer >= 8 {
-                        agent.previous_blocked_moves.pop();
-                        agent.blocked_forget_timer = 0;
-                    }
+
+                    agent.previous_blocked_moves =
+                        agent.previous_blocked_moves.map(|op| {
+                            op.and_then(|xy| {
+                                let dist = tile::manhattan_distance(xy, target_xy);
+                                compile_time_assert!(tile::Distance::MAX > 8);
+                                (dist < 8).then(|| xy)
+                            })
+                        });
+                    agent.previous_blocked_moves.sort_unstable_by_key(
+                        // `true > false`, so `is_none` puts the `Some`s first.
+                        |op| op.is_none()
+                    )
                 }
             }
         }
@@ -1476,7 +1487,7 @@ pub fn update(
                             ),
                             xy: target_draw_xy,
                         }));
-                        
+
                         #[cfg(feature = "debug-viz")]
                         commands.push(Line(LineSpec{
                             start: tile_edge_to_tile_center(&state.sizes, draw_xy),
@@ -1559,12 +1570,12 @@ pub fn update(
     #[cfg(feature = "debug-viz")]
     {
         let left_text_x = state.sizes.play_xywh.x + MARGIN;
-    
+
         let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
-    
+
         {
             let mut y = MARGIN;
-    
+
             commands.push(Text(TextSpec{
                 text: format!(
                     "input: {:?}",
@@ -1577,9 +1588,9 @@ pub fn update(
                 },
                 kind: TextKind::UI,
             }));
-    
+
             /*y += small_section_h;
-    
+
             commands.push(Text(TextSpec{
                 text: format!(
                     "sizes: {:?}\nanimation_timer: {:?}",
@@ -1595,7 +1606,7 @@ pub fn update(
             }));*/
 
             y += small_section_h;
-    
+
             let mut agent_text = String::with_capacity(256);
 
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
@@ -1603,7 +1614,7 @@ pub fn update(
                     Npc::Nobody => break,
                     Npc::Trade(_)
                     | Npc::NoTrade => {
-                        
+
                     },
                     Npc::Agent(agent) => {
                         agent_text.push_str(
