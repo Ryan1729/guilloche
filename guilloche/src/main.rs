@@ -240,7 +240,7 @@ mod raylib_rs_platform {
             };
 
             let _ = duration.as_nanos();
-            // Trapped
+            // Agent gets blocked by other Agent
             1639281189649365947
         };
         println!("{}", seed);
