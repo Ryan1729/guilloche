@@ -155,7 +155,6 @@ impl XY {
         XYOrthogonalIter::new(self)
     }
 
-    #[allow(unused)]
     pub fn is_adjacent_to(&self, xy: Self) -> bool {
         // Who cares about a few extra clones here?
         macro_rules! check {

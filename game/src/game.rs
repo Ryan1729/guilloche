@@ -762,6 +762,16 @@ macro_rules! player_xy {
     }
 }
 
+fn none_adjacent_to(
+    xys: &[tile::XY],
+    center_xy: tile::XY
+) -> bool {
+    !xys.iter()
+        .any(|&xy|
+            center_xy.is_adjacent_to(xy)
+        )
+}
+
 impl Board {
     fn from_seed(seed: Seed, templates: &mut Templates) -> Self {
         let mut rng = xs_from_seed(seed);
@@ -783,9 +793,6 @@ impl Board {
         let mut tiles = [TileData::default(); TILES_LENGTH as _];
         let mut npcs = Npcs::default();
         let mut next_npc_index = NPC_ENTITY_MIN;
-        // We currently rely on the coversion from entity to NPC index being merely
-        // a cast.
-        compile_time_assert!(NPC_ENTITY_MIN == 0);
 
         for (pixel_i, chunk) in map.chunks_exact(templates::BYTES_PER_PIXEL as _).enumerate() {
             use EdgeType::*;
@@ -836,16 +843,22 @@ impl Board {
                             if pushed_npc_count < MAX_NPCS_PER_GROUP
                             // TODO Does this bias towards particular patterns?
                             && xs_u32(&mut rng, 0, 4) == 0 {
+                                let xy = tile::i_to_xy(tile_i);
                                 compile_time_assert!(NPC_ENTITY_MAX < Entity::MAX);
+                                // We expect the maxmium value next_npc_index can 
+                                // take is `NPC_ENTITY_MAX + 1`.
                                 if next_npc_index <= NPC_ENTITY_MAX
-                                && npcs[next_npc_index] == Npc::Nobody {
-                                    xys[next_npc_index] = tile::i_to_xy(tile_i);
+                                && npcs[next_npc_index] == Npc::Nobody
+                                && none_adjacent_to(
+                                    &xys.0[NPC_ENTITY_MIN as usize..next_npc_index as usize],
+                                    xy
+                                ) {
+                                    xys[next_npc_index] = xy;
 
                                     next_npc_index = next_npc_index.saturating_add(1);
+                                    pushed_npc_count += 1;
                                 }
-                                pushed_npc_count += 1;
                             }
-
 
                             Floor
                         }
@@ -858,7 +871,7 @@ impl Board {
             }
         }
 
-        let active_npcs = &mut npcs.0[0..next_npc_index as usize];
+        let active_npcs = &mut npcs.0[NPC_ENTITY_MIN as usize..next_npc_index as usize];
 
         populate_npcs(&mut rng, active_npcs);
 
