@@ -572,7 +572,7 @@ impl Trade {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AgentTarget {
     NoTarget,
-    Target(tile::XY),
+    Target(tile::XY, Dir),
 }
 
 impl Default for AgentTarget {
@@ -1316,10 +1316,11 @@ pub fn update(
                                 // deal with the possibility of multiple agents having the
                                 // same target, or the trader not being active at that time.
                                 agent.target = Target(
-                                    trader_xy_deck.draw(&mut state.board.rng)
+                                    trader_xy_deck.draw(&mut state.board.rng),
+                                    crate::Dir::from_rng(&mut state.board.rng),
                                 );
                             },
-                            Target(target) => {
+                            Target(target, _) => {
                                 let goal = tile::WalkGoal {
                                     at: state.board.xys[entity],
                                     target,
@@ -1372,7 +1373,7 @@ pub fn update(
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
-                    Target(target) => {
+                    Target(target, _) => {
                         let goal = tile::WalkGoal {
                             at: state.board.xys[*entity],
                             target,
@@ -1414,8 +1415,6 @@ pub fn update(
 
                     // We need to drain these out eventually but we also need them
                     // to hang around for a bit to be effective.
-                    // TODO maybe filter out based on distance to current xy instead?
-
                     agent.previous_blocked_moves =
                         agent.previous_blocked_moves.map(|op| {
                             op.and_then(|xy| {
@@ -1427,7 +1426,18 @@ pub fn update(
                     agent.previous_blocked_moves.sort_unstable_by_key(
                         // `true > false`, so `is_none` puts the `Some`s first.
                         |op| op.is_none()
-                    )
+                    );
+
+                    use AgentTarget::*;
+                    match agent.target {
+                        Target(t_xy, _dir) if t_xy == state.board.xys[entity] => {
+                            // We have arrived.
+                        }
+                        Target(..) => {
+                            // Wait until we arrive
+                        }
+                        _ => { debug_assert!(false, "unexpect AgentTarget") }
+                    }
                 }
             }
         }
@@ -1483,7 +1493,7 @@ pub fn update(
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
-                    Target(target) => {
+                    Target(target, dir) => {
                         let target_draw_xy = draw_xy_from_tile(
                             &state.sizes,
                             target
@@ -1491,7 +1501,7 @@ pub fn update(
 
                         commands.push(Sprite(SpriteSpec{
                             sprite: SpriteKind::Arrow(
-                                <_>::default(),
+                                dir,
                                 if target == xy {
                                     ArrowKind::Green
                                 } else {
