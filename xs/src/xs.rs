@@ -102,3 +102,54 @@ fn xs_set_seed() {
     assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2971803477);
     assert_eq!(xs_u32(&mut rng, 0, u32::MAX), 2015189959);
 }
+
+#[macro_export]
+macro_rules! counted_enum_def {
+    ($name: ident { $( $variants: ident ),+ $(,)? }) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub enum $name {
+            $( $variants ),+
+        }
+
+        impl $name {
+            /// The number of variants in `$name`.
+            pub const COUNT: usize = {
+                let mut count = 0;
+
+                $(
+                    // Some reference to the vars is needed to use
+                    // the repetitions.
+                    let _ = Self::$variants;
+
+                    count += 1;
+                )+
+
+                count
+            };
+
+            /// All of the variants in `$name`.
+            pub const ALL: [Self; Self::COUNT] = [
+                $(Self::$variants,)+
+            ];
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! from_rng_enum_def {
+    ($name: ident { $( $variants: ident ),+ $(,)? }) => {
+        counted_enum_def!{
+            $name {
+                $( $variants ),+
+            }
+        }
+
+        impl $name {
+            /// Picks a random variant of `$name`.
+            #[allow(unused)] // This may often be desired only for tests
+            pub fn from_rng(rng: &mut Xs) -> Self {
+                Self::ALL[xs_u32(rng, 0, Self::ALL.len() as u32) as usize]
+            }
+        }
+    }
+}

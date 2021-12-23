@@ -10,8 +10,8 @@ macro_rules! compile_time_assert {
     }
 }
 
-use xs::{Seed, Xs, new_seed, xs_u32, xs_shuffle, xs_from_seed};
-pub use tile::{TILES_WIDTH, TILES_HEIGHT, TILES_LENGTH};
+use xs::{Seed, Xs, new_seed, xs_u32, xs_shuffle, xs_from_seed, counted_enum_def, from_rng_enum_def};
+pub use tile::{Dir, TILES_WIDTH, TILES_HEIGHT, TILES_LENGTH};
 
 // In case we decide that we care about no_std/not directly allocating ourself
 pub trait ClearableStorage<A> {
@@ -49,52 +49,6 @@ pub use draw::{
     Sizes,
 };
 
-macro_rules! counted_enum_def {
-    ($name: ident { $( $variants: ident ),+ $(,)? }) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum $name {
-            $( $variants ),+
-        }
-
-        impl $name {
-            pub const COUNT: usize = {
-                let mut count = 0;
-
-                $(
-                    // Some reference to the vars is needed to use
-                    // the repetitions.
-                    let _ = Self::$variants;
-
-                    count += 1;
-                )+
-
-                count
-            };
-
-            pub const ALL: [Self; Self::COUNT] = [
-                $(Self::$variants,)+
-            ];
-        }
-    }
-}
-
-macro_rules! from_rng_enum_def {
-    ($name: ident { $( $variants: ident ),+ $(,)? }) => {
-        counted_enum_def!{
-            $name {
-                $( $variants ),+
-            }
-        }
-
-        impl $name {
-            #[allow(unused)]
-            pub fn from_rng(rng: &mut Xs) -> Self {
-                Self::ALL[xs_u32(rng, 0, Self::ALL.len() as u32) as usize]
-            }
-        }
-    }
-}
-
 from_rng_enum_def!{
     ArrowKind {
         Red,
@@ -105,25 +59,6 @@ from_rng_enum_def!{
 impl Default for ArrowKind {
     fn default() -> Self {
         Self::Red
-    }
-}
-
-from_rng_enum_def!{
-    Dir {
-        Up,
-        UpRight,
-        Right,
-        DownRight,
-        Down,
-        DownLeft,
-        Left,
-        UpLeft,
-    }
-}
-
-impl Default for Dir {
-    fn default() -> Self {
-        Self::Up
     }
 }
 
@@ -572,7 +507,7 @@ impl Trade {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AgentTarget {
     NoTarget,
-    Target(tile::XY, Dir),
+    Target(TradingSpot),
 }
 
 impl Default for AgentTarget {
@@ -845,7 +780,7 @@ impl Board {
                             && xs_u32(&mut rng, 0, 4) == 0 {
                                 let xy = tile::i_to_xy(tile_i);
                                 compile_time_assert!(NPC_ENTITY_MAX < Entity::MAX);
-                                // We expect the maxmium value next_npc_index can 
+                                // We expect the maxmium value next_npc_index can
                                 // take is `NPC_ENTITY_MAX + 1`.
                                 if next_npc_index <= NPC_ENTITY_MAX
                                 && npcs[next_npc_index] == Npc::Nobody
@@ -999,28 +934,36 @@ fn move_xy(xy: &mut tile::XY, dir: Dir, variant: MoveVariant) {
     }
 }
 
-// When/if we have a second use case, maybe make this a generic constant?
-// That is, something like `struct XYDeck<const COUNT: usize> {}`
-const XY_DECK_COUNT: usize = MAX_NPCS_PER_CHUNK * Dir::COUNT;
-struct XYDeck {
-    deck: [tile::XY; XY_DECK_COUNT],
+/// A spot where you can stand talk to a trader.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+struct TradingSpot {
+    xy: tile::XY,
+    towards_trader: Dir,
+}
+
+const TRADING_SPOT_DECK_COUNT: usize = MAX_NPCS_PER_CHUNK * Dir::COUNT;
+struct TradingSpotDeck {
+    deck: [TradingSpot; TRADING_SPOT_DECK_COUNT],
     current_index: usize,
     max_index: usize,
 }
 compile_time_assert!(MAX_NPCS_PER_CHUNK > 0);
 
-impl XYDeck {
-    fn active_trading_spots(board: &mut Board) -> Option<XYDeck> {
-        let mut deck = [tile::XY::default(); XY_DECK_COUNT];
+impl TradingSpotDeck {
+    fn active_trading_spots(board: &mut Board) -> Option<TradingSpotDeck> {
+        let mut deck = [<_>::default(); TRADING_SPOT_DECK_COUNT];
 
         let mut max_index = None;
 
         for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
             if let Npc::Trade(_) = board.npcs[entity] {
-                for xy in board.xys[entity].orthogonal_iter() {
+                for (xy, from_xy) in board.xys[entity].orthogonal_iter_with_dir() {
                     if board.is_walkable(xy) {
                         let i = max_index.map(|i| i + 1).unwrap_or(0);
-                        deck[i] = xy;
+                        deck[i] = TradingSpot {
+                            xy,
+                            towards_trader: from_xy.backward(),
+                        };
                         max_index = Some(i);
                     }
                 }
@@ -1030,7 +973,7 @@ impl XYDeck {
         max_index.map(|max_index| {
             xs_shuffle(&mut board.rng, &mut deck[0..=max_index]);
 
-            XYDeck {
+            TradingSpotDeck {
                 deck,
                 max_index,
                 current_index: max_index,
@@ -1038,7 +981,7 @@ impl XYDeck {
         })
     }
 
-    fn draw(&mut self, rng: &mut Xs) -> tile::XY {
+    fn draw(&mut self, rng: &mut Xs) -> TradingSpot {
         let output = self.deck[self.current_index];
         if self.current_index == 0 {
             xs_shuffle(rng, &mut self.deck[0..=self.max_index]);
@@ -1113,37 +1056,36 @@ enum Input {
     Interact,
 }
 
-impl Dir {
-    fn from_flags(flags: InputFlags) -> Option<Self> {
-        use crate::Dir::*;
-        if (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) {
-            Some(UpRight)
-        } else if (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) {
-            Some(DownRight)
-        } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
-            Some(DownLeft)
-        } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
-            Some(UpLeft)
-        } else if INPUT_UP_DOWN & flags != 0 {
-            Some(Up)
-        } else if INPUT_DOWN_DOWN & flags != 0 {
-            Some(Down)
-        } else if INPUT_LEFT_DOWN & flags != 0 {
-            Some(Left)
-        } else if INPUT_RIGHT_DOWN & flags != 0 {
-            Some(Right)
-        } else {
-            None
-        }
+fn dir_from_flags(flags: InputFlags) -> Option<Dir> {
+    use crate::Dir::*;
+    if (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) {
+        Some(UpRight)
+    } else if (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) {
+        Some(DownRight)
+    } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
+        Some(DownLeft)
+    } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
+        Some(UpLeft)
+    } else if INPUT_UP_DOWN & flags != 0 {
+        Some(Up)
+    } else if INPUT_DOWN_DOWN & flags != 0 {
+        Some(Down)
+    } else if INPUT_LEFT_DOWN & flags != 0 {
+        Some(Left)
+    } else if INPUT_RIGHT_DOWN & flags != 0 {
+        Some(Right)
+    } else {
+        None
     }
 }
+
 
 impl Input {
     fn from_flags(flags: InputFlags) -> Self {
         use Input::*;
         if INPUT_INTERACT_PRESSED & flags != 0 {
             Interact
-        } else if let Some(dir) = crate::Dir::from_flags(flags) {
+        } else if let Some(dir) = dir_from_flags(flags) {
             Dir(dir)
         } else {
             NoChange
@@ -1224,7 +1166,7 @@ pub fn update(
             }
         },
         Interact => {
-            if let Some(dir) = crate::Dir::from_flags(input_flags) {
+            if let Some(dir) = dir_from_flags(input_flags) {
                 let mut target = player_xy!(state.board);
                 move_xy(&mut target, dir, DIRECT_MOVE_VARIANT);
 
@@ -1265,7 +1207,7 @@ pub fn update(
         },
     }
 
-    if let Some(mut trader_xy_deck) = XYDeck::active_trading_spots(
+    if let Some(mut trader_spot_deck) = TradingSpotDeck::active_trading_spots(
         &mut state.board,
     ) {
         // TODO is it worth it to make this a per-frame thing? Or maybe store it
@@ -1309,6 +1251,8 @@ pub fn update(
                         use AgentTarget::*;
                         match agent.target {
                             NoTarget => {
+                                let spot = trader_spot_deck.draw(&mut state.board.rng);
+
                                 // It is, of course, possible that the location will not be
                                 // walkable by the time we get there. A form of the TOCTOU
                                 // problem. The agent will need to deal with this when they
@@ -1316,11 +1260,10 @@ pub fn update(
                                 // deal with the possibility of multiple agents having the
                                 // same target, or the trader not being active at that time.
                                 agent.target = Target(
-                                    trader_xy_deck.draw(&mut state.board.rng),
-                                    crate::Dir::from_rng(&mut state.board.rng),
+                                    spot,
                                 );
                             },
-                            Target(target, _) => {
+                            Target(TradingSpot { xy: target, ..}) => {
                                 let goal = tile::WalkGoal {
                                     at: state.board.xys[entity],
                                     target,
@@ -1373,7 +1316,7 @@ pub fn update(
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
-                    Target(target, _) => {
+                    Target(TradingSpot { xy: target, towards_trader: _}) => {
                         let goal = tile::WalkGoal {
                             at: state.board.xys[*entity],
                             target,
@@ -1430,7 +1373,7 @@ pub fn update(
 
                     use AgentTarget::*;
                     match agent.target {
-                        Target(t_xy, _dir) if t_xy == state.board.xys[entity] => {
+                        Target(TradingSpot{xy, ..}) if xy == state.board.xys[entity] => {
                             // We have arrived.
                         }
                         Target(..) => {
@@ -1493,7 +1436,7 @@ pub fn update(
                 use AgentTarget::*;
                 match agent.target {
                     NoTarget => {},
-                    Target(target, dir) => {
+                    Target(TradingSpot { xy: target, towards_trader}) => {
                         let target_draw_xy = draw_xy_from_tile(
                             &state.sizes,
                             target
@@ -1501,7 +1444,7 @@ pub fn update(
 
                         commands.push(Sprite(SpriteSpec{
                             sprite: SpriteKind::Arrow(
-                                dir,
+                                towards_trader,
                                 if target == xy {
                                     ArrowKind::Green
                                 } else {

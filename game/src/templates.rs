@@ -21,7 +21,7 @@ impl Default for TileKind {
     }
 }
 
-counted_enum_def!{
+xs::counted_enum_def!{
     EdgeType {
         UpperLeft,
         Upper,

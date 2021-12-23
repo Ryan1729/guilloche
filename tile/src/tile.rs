@@ -10,7 +10,7 @@ macro_rules! compile_time_assert {
     }
 }
 
-use xs::{Xs, xs_u32};
+use xs::{Xs, xs_u32, counted_enum_def, from_rng_enum_def};
 use std::collections::HashMap;
 
 pub type Count = u32;
@@ -102,59 +102,7 @@ impl XY {
     }
 }
 
-const ORTHOGONAL_COUNT: usize = 4; // We're in 2D.
-
-struct XYOrthogonalIter{
-    xys: [Option<XY>; ORTHOGONAL_COUNT],
-    index: usize
-}
-
-impl XYOrthogonalIter {
-    #[allow(unused_assignments)]
-    fn new(xy: XY) -> Self {
-        let mut xys = [None; ORTHOGONAL_COUNT];
-        compile_time_assert!(ORTHOGONAL_COUNT < usize::MAX);
-
-        let mut i = 0;
-        macro_rules! push {
-            ($method: ident) => {
-                let mut new_xy = xy;
-                new_xy.$method();
-                if new_xy != xy {
-                    xys[i] = Some(new_xy);
-                }
-                // This is unused in the last macro invocation.
-                i += 1;
-            }
-        }
-
-        push!(move_up);
-        push!(move_left);
-        push!(move_right);
-        push!(move_down);
-
-        XYOrthogonalIter {
-            xys,
-            index: 0,
-        }
-    }
-}
-
-impl Iterator for XYOrthogonalIter {
-    type Item = XY;
-
-    fn next(&mut self) -> Option<XY> {
-        let output = self.xys.get(self.index).and_then(|&xy| xy);
-        self.index += 1;
-        output
-    }
-}
-
 impl XY {
-    pub fn orthogonal_iter(self) -> impl Iterator<Item = Self> {
-        XYOrthogonalIter::new(self)
-    }
-
     pub fn is_adjacent_to(&self, xy: Self) -> bool {
         // Who cares about a few extra clones here?
         macro_rules! check {
@@ -227,6 +175,42 @@ pub fn i_to_xy(index: usize) -> XY {
 
 fn to_coord_or_default(n: Count) -> Coord {
     core::convert::TryFrom::try_from(n).unwrap_or_default()
+}
+
+from_rng_enum_def!{
+    Dir {
+        Up,
+        UpRight,
+        Right,
+        DownRight,
+        Down,
+        DownLeft,
+        Left,
+        UpLeft,
+    }
+}
+
+impl Default for Dir {
+    fn default() -> Self {
+        Self::Up
+    }
+}
+
+impl Dir {
+    /// The `Dir` 180 degrees from this one.
+    pub fn backward(self) -> Self {
+        use Dir::*;
+        match self {
+            Up => Down,
+            UpRight => DownLeft,
+            Right => Left,
+            DownRight => UpLeft,
+            Down => Up,
+            DownLeft => UpRight,
+            Left => Right,
+            UpLeft => DownRight,
+        }
+    }
 }
 
 pub type Distance = Count;
@@ -388,4 +372,63 @@ pub fn next_walk_step(
 
     // If this is still `at`, then the open set is empty but goal was never reached.
     output
+}
+
+const ORTHOGONAL_COUNT: usize = 4; // We're in 2D.
+
+struct XYOrthogonalIterWithDir {
+    pairs: [Option<(XY, Dir)>; ORTHOGONAL_COUNT],
+    index: usize
+}
+
+impl XYOrthogonalIterWithDir {
+    #[allow(unused_assignments)]
+    fn new(xy: XY) -> Self {
+        let mut pairs = [None; ORTHOGONAL_COUNT];
+        compile_time_assert!(ORTHOGONAL_COUNT < usize::MAX);
+
+        let mut i = 0;
+        macro_rules! push {
+            ($method: ident, $dir: ident) => {
+                let mut new_xy = xy;
+                new_xy.$method();
+                if new_xy != xy {
+                    pairs[i] = Some((new_xy, crate::Dir::$dir));
+                }
+                // This is unused in the last macro invocation.
+                i += 1;
+            }
+        }
+
+        push!(move_up, Up);
+        push!(move_left, Left);
+        push!(move_right, Right);
+        push!(move_down, Down);
+
+        XYOrthogonalIterWithDir {
+            pairs,
+            index: 0,
+        }
+    }
+}
+
+impl Iterator for XYOrthogonalIterWithDir {
+    type Item = (XY, Dir);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let output = self.pairs.get(self.index).and_then(|&xy| xy);
+        self.index += 1;
+        output
+    }
+}
+
+impl XY {
+    pub fn orthogonal_iter_with_dir(self) -> impl Iterator<Item = (Self, Dir)> {
+        XYOrthogonalIterWithDir::new(self)
+    }
+
+    pub fn orthogonal_iter(self) -> impl Iterator<Item = Self> {
+        self.orthogonal_iter_with_dir()
+            .map(|pair| pair.0)
+    }
 }
