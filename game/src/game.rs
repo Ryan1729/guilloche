@@ -1606,6 +1606,58 @@ pub fn update(
                 }));
             }
         }
+
+        {
+            let mut xy = draw_xy_from_tile(
+                &state.sizes,
+                tile::XY{
+                    x: <_>::default(),
+                    y: tile::Y::MAX,
+                }
+            );
+
+            xy.x -= state.sizes.tile_side_length * 8.;
+            // This places it in a spot that gets cut off in some window sizes.
+            // Since this is a debugging aid, we don't care.
+            xy.y += state.sizes.tile_side_length;
+
+            for i in 0..ENTITY_COUNT as Entity {
+                if i == PLAYER_ENTITY {
+                    commands.push(Sprite(SpriteSpec{
+                        sprite: SpriteKind::Eye(
+                            EyeVariant::Agent,
+                            state.board.eye_states[i].sprite()
+                        ),
+                        xy,
+                    }));
+                } else {
+                    match &state.board.npcs[i as usize] {
+                        Npc::Nobody => {},
+                        Npc::Trade(..)
+                        | Npc::NoTrade => {
+                            commands.push(Sprite(SpriteSpec{
+                                sprite: SpriteKind::Eye(
+                                    EyeVariant::Trader,
+                                    state.board.eye_states[i].sprite()
+                                ),
+                                xy,
+                            }));
+                        },
+                        Npc::Agent(..) => {
+                            commands.push(Sprite(SpriteSpec{
+                                sprite: SpriteKind::Eye(
+                                    EyeVariant::Agent,
+                                    state.board.eye_states[i].sprite()
+                                ),
+                                xy,
+                            }));
+                        },
+                    }
+                }
+
+                xy.x += state.sizes.tile_side_length;
+            }
+        }
     }
 
     state.animation_timer += 1;

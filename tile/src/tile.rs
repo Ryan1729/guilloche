@@ -21,15 +21,15 @@ pub type Coord = u8;
 pub struct X(Coord);
 
 impl X {
-    pub const MAX: Coord = 0b0011_1111;
-    pub const COUNT: Count = (X::MAX as Count) + 1;
+    pub const MAX: Self = Self(0b0011_1111);
+    pub const COUNT: Count = (X::MAX.0 as Count) + 1;
 
     pub fn from_rng(rng: &mut Xs) -> Self {
         Self(xs_u32(rng, 0, Self::COUNT) as Coord)
     }
 
     pub fn saturating_add_one(&self) -> Self {
-        Self(core::cmp::min(self.0.saturating_add(1), Self::MAX))
+        Self(core::cmp::min(self.0.saturating_add(1), Self::MAX.0))
     }
 
     pub fn saturating_sub_one(&self) -> Self {
@@ -47,15 +47,15 @@ impl From<X> for Coord {
 pub struct Y(Coord);
 
 impl Y {
-    pub const MAX: Coord = 0b0011_1111;
-    pub const COUNT: Count = (Y::MAX as Count) + 1;
+    pub const MAX: Self = Self(0b0011_1111);
+    pub const COUNT: Count = (Y::MAX.0 as Count) + 1;
 
     pub fn from_rng(rng: &mut Xs) -> Self {
         Self(xs_u32(rng, 0, Self::COUNT) as Coord)
     }
 
     pub fn saturating_add_one(&self) -> Self {
-        Self(core::cmp::min(self.0.saturating_add(1), Self::MAX))
+        Self(core::cmp::min(self.0.saturating_add(1), Self::MAX.0))
     }
 
     pub fn saturating_sub_one(&self) -> Self {
