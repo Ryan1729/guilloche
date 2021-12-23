@@ -1052,12 +1052,12 @@ pub const INPUT_INTERACT_PRESSED: InputFlags        = 0b0000_0001_0000_0000;
 #[derive(Clone, Copy, Debug)]
 enum Input {
     NoChange,
-    Dir(Dir),
+    Direction(Dir),
     Interact,
 }
 
 fn dir_from_flags(flags: InputFlags) -> Option<Dir> {
-    use crate::Dir::*;
+    use Dir::*;
     if (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_RIGHT_DOWN) {
         Some(UpRight)
     } else if (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_RIGHT_DOWN) {
@@ -1086,7 +1086,7 @@ impl Input {
         if INPUT_INTERACT_PRESSED & flags != 0 {
             Interact
         } else if let Some(dir) = dir_from_flags(flags) {
-            Dir(dir)
+            Direction(dir)
         } else {
             NoChange
         }
@@ -1141,7 +1141,7 @@ pub fn update(
 
     match input {
         NoChange => {},
-        Dir(dir) => {
+        Direction(dir) => {
             if Some(dir) != state.last_dir {
                 state.board.speech = Speech::Silence;
             }
@@ -1520,7 +1520,7 @@ pub fn update(
             }
 
             commands.push(Sprite(SpriteSpec{
-                sprite: SpriteKind::Arrow(crate::Dir::Right, ArrowKind::Green),
+                sprite: SpriteKind::Arrow(Dir::Right, ArrowKind::Green),
                 xy: DrawXY { x, y: top_edge_y },
             }));
 

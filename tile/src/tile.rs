@@ -393,7 +393,7 @@ impl XYOrthogonalIterWithDir {
                 let mut new_xy = xy;
                 new_xy.$method();
                 if new_xy != xy {
-                    pairs[i] = Some((new_xy, crate::Dir::$dir));
+                    pairs[i] = Some((new_xy, Dir::$dir));
                 }
                 // This is unused in the last macro invocation.
                 i += 1;
