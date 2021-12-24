@@ -1356,7 +1356,6 @@ pub fn update(
                 // time, then consider that.
                 is_walkable_map[tile::xy_to_i(*xy)] = false;
                 needs_second_pass = true;
-                dbg!();
             }
         }
 
