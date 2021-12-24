@@ -504,6 +504,63 @@ impl Trade {
     }
 }
 
+struct TradeEntities {
+    agent_entity: Entity,
+    trader_entity: Entity,
+}
+
+fn attempt_trade(
+    board: &mut Board,
+    TradeEntities {agent_entity, trader_entity}: TradeEntities,
+) {
+    let trade = if let Npc::Trade(ref trade) = board.npcs[trader_entity] {
+        *trade
+    } else {
+        return;
+    };
+
+    {
+        let inventory: &mut Inventory
+            = if agent_entity == PLAYER_ENTITY {
+            &mut board.inventory
+        } else if let Npc::Agent(ref mut agent) = board.npcs[agent_entity] {
+            &mut agent.inventory
+        } else {
+            return;
+        };
+
+        if trade.wants.iter()
+            .all(|&want|
+                want == NO_ITEM
+                || inventory.contains(want)
+            ) {
+            for &want in trade.wants.iter() {
+                inventory.remove(want);
+            }
+            inventory.insert(trade.offer);
+        }
+    }
+
+    {
+        if agent_entity == PLAYER_ENTITY {
+            // Don't need to clear the player's target.
+        } else if let Npc::Agent(ref mut agent) = board.npcs[agent_entity] {
+            agent.target = <_>::default();
+        } else {
+            panic!("We should have already early returned above!");
+        };
+    }
+
+    // This cannot put us in an invalid state since we return early when checking
+    // either entity above. We do the other mutations after releasing the borrow
+    // to appease borrowck.
+
+    // TODO Have them walk somewhere else or
+    // something? We'll need to adjust the
+    // parameters to this function.
+    board.npcs[trader_entity] = Npc::NoTrade;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AgentTarget {
     NoTarget,
@@ -1176,22 +1233,14 @@ pub fn update(
 
                         state.board.speech = match state.board.speech {
                             Speech::Silence => target_speech,
-                            Speech::Trade(trade) => {
-                                if trade.wants.iter()
-                                    .all(|&want|
-                                        want == NO_ITEM
-                                        || state.board.inventory.contains(want)
-                                    ) {
-
-                                    for &want in trade.wants.iter() {
-                                        state.board.inventory.remove(want);
-                                    }
-                                    state.board.inventory.insert(trade.offer);
-
-                                    // TODO Have them walk somewhere else or
-                                    // something?
-                                    state.board.npcs[entity] = Npc::NoTrade;
-                                }
+                            Speech::Trade(_) => {
+                                attempt_trade(
+                                    &mut state.board,
+                                    TradeEntities {
+                                        agent_entity: PLAYER_ENTITY,
+                                        trader_entity: entity,
+                                    },
+                                );
 
                                 Speech::Silence
                             },
@@ -1350,11 +1399,13 @@ pub fn update(
         }
 
         // Do the final moving
-        for (entity, target_xy) in move_pairs {
-            if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
+        for (agent_entity, target_xy) in move_pairs {
+            let mut trade_entities = None;
+
+            if let Npc::Agent(ref mut agent) = state.board.npcs[agent_entity] {
                 // We can use [] since we just inserted every xy.
                 if counts[&target_xy] == 1 {
-                    state.board.xys[entity] = target_xy;
+                    state.board.xys[agent_entity] = target_xy;
 
                     // We need to drain these out eventually but we also need them
                     // to hang around for a bit to be effective.
@@ -1373,8 +1424,51 @@ pub fn update(
 
                     use AgentTarget::*;
                     match agent.target {
-                        Target(TradingSpot{xy, ..}) if xy == state.board.xys[entity] => {
+                        Target(TradingSpot{xy, towards_trader}) if xy == state.board.xys[agent_entity] => {
                             // We have arrived.
+
+                            let trader_entity = {
+                                let mut trader_xy = xy;
+                                move_xy(
+                                    &mut trader_xy,
+                                    towards_trader,
+                                    DIRECT_MOVE_VARIANT,
+                                );
+
+                                let mut output = None;
+
+                                for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                                    if trader_xy == state.board.xys[entity] {
+                                        output = Some(entity);
+                                        break;
+                                    }
+                                }
+
+                                output
+                            };
+
+                            if let Some(trader_entity) = trader_entity {
+                                match state.board.npcs[trader_entity] {
+                                    Npc::Trade(_) => {
+                                        trade_entities = Some(
+                                            TradeEntities {
+                                                agent_entity,
+                                                trader_entity,
+                                            }
+                                        );
+                                    },
+                                    // This can happen if someone else gets to the
+                                    // trader first.
+                                    Npc::NoTrade => {},
+                                    ref other => {
+                                        debug_assert!(
+                                            false,
+                                            "unexpected npc: {:?}",
+                                            other
+                                        );
+                                    }
+                                }
+                            }
                         }
                         Target(..) => {
                             // Wait until we arrive
@@ -1382,6 +1476,13 @@ pub fn update(
                         _ => { debug_assert!(false, "unexpect AgentTarget") }
                     }
                 }
+            }
+
+            if let Some(trade_entities) = trade_entities {
+                attempt_trade(
+                    &mut state.board,
+                    trade_entities,
+                );
             }
         }
     }
