@@ -1643,7 +1643,7 @@ pub fn update(
         let small_section_h = state.sizes.draw_wh.h / 8. - MARGIN;
 
         #[allow(unused_mut)]
-        let mut y = MARGIN;
+        let mut y = state.sizes.board_xywh.y + MARGIN * 3.;
         {
             commands.push(Text(TextSpec{
                 text: format!(
