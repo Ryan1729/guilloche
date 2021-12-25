@@ -672,7 +672,7 @@ impl From<&Npc> for Speech {
 
 type RegenTimer = u16;
 
-const REGEN_TIMER_LENGTH: RegenTimer = 3 * 60 /* 60 FPS */ ;
+const REGEN_TIMER_LENGTH: RegenTimer = 3;// * 60 /* 60 FPS */ ;
 
 #[derive(Debug, Default)]
 struct RegenState {

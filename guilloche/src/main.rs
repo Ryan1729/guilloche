@@ -239,9 +239,7 @@ mod raylib_rs_platform {
                 Err(err) => err.duration(),
             };
 
-            let _ = duration.as_nanos();
-            // Agent gets blocked by other Agent
-            1639281189649365947
+            duration.as_nanos()
         };
         println!("{}", seed);
 
