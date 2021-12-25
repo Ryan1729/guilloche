@@ -714,10 +714,13 @@ impl RegenState {
         };
 
         for item_i in FIRST_ITEM_ID..=LAST_ITEM_ID {
+            type LargerThanItemId = u16;
+            compile_time_assert!(LargerThanItemId::BITS > ItemId::BITS);
+
             let item_id = (
-                (item_i + self.item_offset)
-                % (LAST_ITEM_ID - FIRST_ITEM_ID)
-            ) + FIRST_ITEM_ID;
+                (item_i as LargerThanItemId + self.item_offset as LargerThanItemId)
+                % (LAST_ITEM_ID - FIRST_ITEM_ID) as LargerThanItemId
+            ) as ItemId + FIRST_ITEM_ID;
 
             // TODO sometimes regenerate trades with wants.
             if !inventory.contains(item_id)
