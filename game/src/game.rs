@@ -1536,33 +1536,40 @@ pub fn update(
                     xy: draw_xy,
                 }));
 
-                use AgentTarget::*;
-                match agent.target {
-                    NoTarget => {},
-                    Target(TradingSpot { xy: target, towards_trader}) => {
-                        let target_draw_xy = draw_xy_from_tile(
-                            &state.sizes,
-                            target
-                        );
-
-                        commands.push(Sprite(SpriteSpec{
-                            sprite: SpriteKind::Arrow(
-                                towards_trader,
-                                if target == xy {
-                                    ArrowKind::Green
-                                } else {
-                                    ArrowKind::Red
-                                }
-                            ),
-                            xy: target_draw_xy,
-                        }));
-
-                        #[cfg(feature = "debug-viz")]
-                        commands.push(Line(LineSpec{
-                            start: tile_edge_to_tile_center(&state.sizes, draw_xy),
-                            end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
-                        }));
+                #[cfg(feature = "debug-viz")]
+                {
+                    use AgentTarget::*;
+                    match agent.target {
+                        NoTarget => {},
+                        Target(TradingSpot { xy: target, towards_trader}) => {
+                            let target_draw_xy = draw_xy_from_tile(
+                                &state.sizes,
+                                target
+                            );
+    
+                            commands.push(Sprite(SpriteSpec{
+                                sprite: SpriteKind::Arrow(
+                                    towards_trader,
+                                    if target == xy {
+                                        ArrowKind::Green
+                                    } else {
+                                        ArrowKind::Red
+                                    }
+                                ),
+                                xy: target_draw_xy,
+                            }));
+    
+                            commands.push(Line(LineSpec{
+                                start: tile_edge_to_tile_center(&state.sizes, draw_xy),
+                                end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
+                            }));
+                        }
                     }
+                }
+
+                #[cfg(not(feature = "debug-viz"))]
+                {
+                    let _ = agent;
                 }
             },
         }
