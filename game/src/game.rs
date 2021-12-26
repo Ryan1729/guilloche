@@ -138,6 +138,7 @@ from_rng_enum_def!{
     TileKind {
         Floor,
         Wall,
+        Door,
     }
 }
 
@@ -164,6 +165,7 @@ impl TileData {
         match self.kind {
             Floor => SpriteKind::Floor,
             Wall => SpriteKind::Wall(<_>::default(), <_>::default()),
+            Door => SpriteKind::Door,
         }
     }
 }
@@ -862,6 +864,116 @@ impl Board {
                     tiles[tile_i] = TileData{
                         kind,
                     }
+                }
+            }
+        }
+
+        struct TilesEdge<'indexes> {
+            indexes: &'indexes [usize],
+            towards_middle: Dir,
+        }
+
+        // While loops are used because as of this writing for loops are not allowed
+        // in `const`s.
+        const NORTH_INDEXES: [usize; TILES_WIDTH - 2] = {
+            let mut north_indexes = [0; TILES_WIDTH - 2];
+
+            let mut offset = 0;
+            while offset < north_indexes.len() {
+                const NORTH_INDEX_BASE: usize = 1;
+                north_indexes[offset] = NORTH_INDEX_BASE + offset;
+                offset += 1;
+            }
+
+            north_indexes
+        };
+
+        const WEST_INDEXES: [usize; TILES_HEIGHT - 2] = {
+            let mut west_indexes = [0; TILES_HEIGHT - 2];
+
+            let mut offset = 0;
+            while offset < west_indexes.len() {
+                const WEST_INDEX_BASE: usize = TILES_WIDTH;
+                west_indexes[offset] = WEST_INDEX_BASE + offset * TILES_WIDTH;
+                offset += 1;
+            }
+
+            west_indexes
+        };
+
+        const SOUTH_INDEXES: [usize; TILES_WIDTH - 2] = {
+            let mut south_indexes = [0; TILES_WIDTH - 2];
+
+            let mut offset = 0;
+            while offset < south_indexes.len() {
+                const SOUTH_INDEX_BASE: usize = TILES_LENGTH - (TILES_WIDTH - 1);
+                south_indexes[offset] = SOUTH_INDEX_BASE + offset;
+                offset += 1;
+            }
+
+            south_indexes
+        };
+
+        const EAST_INDEXES: [usize; TILES_HEIGHT - 2] = {
+            let mut east_indexes = [0; TILES_HEIGHT - 2];
+
+            let mut offset = 0;
+            while offset < east_indexes.len() {
+                const EAST_INDEX_BASE: usize = TILES_WIDTH + TILES_WIDTH - 1;
+                east_indexes[offset] = EAST_INDEX_BASE + offset * TILES_WIDTH;
+                offset += 1;
+            }
+
+            east_indexes
+        };
+
+        const EDGES: [TilesEdge<'static>; 4] = [
+            TilesEdge {
+                indexes: &NORTH_INDEXES,
+                towards_middle: Dir::Down,
+            },
+            TilesEdge {
+                indexes: &WEST_INDEXES,
+                towards_middle: Dir::Right,
+            },
+            TilesEdge {
+                indexes: &SOUTH_INDEXES,
+                towards_middle: Dir::Up,
+            },
+            TilesEdge {
+                indexes: &EAST_INDEXES,
+                towards_middle: Dir::Left,
+            },
+        ];
+
+        for edge in EDGES {
+            compile_time_assert!(NORTH_INDEXES.len() < u32::MAX as usize);
+            compile_time_assert!(WEST_INDEXES.len() < u32::MAX as usize);
+            compile_time_assert!(SOUTH_INDEXES.len() < u32::MAX as usize);
+            compile_time_assert!(EAST_INDEXES.len() < u32::MAX as usize);
+
+            let len = edge.indexes.len() as u32;
+
+            let random_offset = xs_u32(&mut rng, 0, len) as usize;
+
+            for offset in 0..len as usize {
+                let random_edge_index = (random_offset + offset) % len as usize;
+
+                let random_tile_index = edge.indexes[random_edge_index];
+
+                let random_edge_xy = tile::i_to_xy(random_tile_index);
+    
+                let mut inner_xy = random_edge_xy;
+                move_xy(&mut inner_xy, edge.towards_middle, DIRECT_MOVE_VARIANT);
+    
+                use TileKind::*;
+                match tiles[tile::xy_to_i(inner_xy)].kind {
+                    Floor => {
+                        tiles[tile::xy_to_i(random_edge_xy)].kind = Door;
+                        
+                        break
+                    },
+                    Wall | Door => {}
                 }
             }
         }

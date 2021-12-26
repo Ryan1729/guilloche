@@ -164,6 +164,7 @@ pub enum SpriteKind {
     Arrow(Dir, ArrowKind),
     Wall(WallStyle, WallColour),
     Floor,
+    Door,
     Item(ItemId)
 }
 
