@@ -46,8 +46,8 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
 
     let sx = match sprite {
         Eye(
-            Trader, 
-            NeutralEye 
+            Trader,
+            NeutralEye
             | SmallPupilEye
             | NarrowLeftEye
             | NarrowCenterEye
@@ -58,8 +58,8 @@ fn source_spec(sprite: SpriteKind) -> SourceSpec {
         ) => 0.,
         Eye(Trader, DirEye(_)) => 1.,
         Eye(
-            Agent, 
-            NeutralEye 
+            Agent,
+            NeutralEye
             | SmallPupilEye
             | NarrowLeftEye
             | NarrowCenterEye
@@ -241,7 +241,9 @@ mod raylib_rs_platform {
                 Err(err) => err.duration(),
             };
 
-            duration.as_nanos()
+            let _ = duration.as_nanos();
+            // Many agents stuck; traders in front of doors.
+            1640234423700516557
         };
         println!("{}", seed);
 

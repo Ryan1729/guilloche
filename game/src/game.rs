@@ -260,10 +260,17 @@ fn agent_count_range_gives_the_expected_results_for_these_cases() {
 
 const MAX_WANT_COUNT: usize = 2;
 
-fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
+fn populate_npcs(
+    rng: &mut Xs,
+    active_npcs: &mut[Npc],
+    xys: &mut XYs,
+    door_adjacent_xys: DoorAdjacentXYs
+) {
     let len = active_npcs.len();
 
     debug_assert!(len <= MAX_NPCS_PER_CHUNK);
+    debug_assert!(len <= Entity::MAX as usize);
+    let len = len as Entity;
 
     let mut items = [NO_ITEM; MAX_NPCS_PER_CHUNK];
     compile_time_assert!(MAX_NPCS_PER_CHUNK - 1 <= ItemId::MAX as usize);
@@ -274,7 +281,6 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
     // Since we manually set `trades[trade_i]` to offer `THE_MACGUFFIN`, `items[0]`
     // will never be read after this point.
 
-    debug_assert!(len <= u32::MAX as usize);
     let (agent_count_min, agent_count_one_past_max) = agent_count_range(len as u32);
 
     let agent_count = xs_u32(
@@ -282,18 +288,20 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
         agent_count_min,
         agent_count_one_past_max,
     );
+    assert!(agent_count <= Entity::MAX as u32);
+    let agent_count = agent_count as Entity;
 
     let mut trades = [Trade::default(); MAX_NPCS_PER_CHUNK];
-    let mut trade_i = 0;
-    trades[trade_i] = Trade {
+    let mut trade_i: Entity = 0;
+    trades[trade_i as usize] = Trade {
         wants: [NO_ITEM; MAX_WANT_COUNT],
         offer: THE_MACGUFFIN,
     };
     trade_i += 1;
 
-    let trader_count = len - agent_count as usize;
+    let trader_count = len - agent_count;
     while trade_i < trader_count {
-        let added_item = items[trade_i];
+        let added_item = items[trade_i as usize];
 
         let (extended_trade_i, want_i) = {
             let offset = xs_u32(rng, 0, trade_i as u32) as usize;
@@ -302,8 +310,8 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
             let mut want_i = 0;
             let mut found = false;
 
-            'outer: for base_i in 0..trade_i {
-                let randomized_i = (base_i + offset) % trade_i;
+            'outer: for base_i in 0..trade_i as usize {
+                let randomized_i = (base_i + offset) % trade_i as usize;
 
                 for i in 0..MAX_WANT_COUNT {
                     if trades[randomized_i].wants[i] == NO_ITEM {
@@ -325,33 +333,40 @@ fn populate_npcs(rng: &mut Xs, active_npcs: &mut[Npc]) {
 
         trades[extended_trade_i].wants[want_i] = added_item;
 
-        trades[trade_i] = Trade {
+        trades[trade_i as usize] = Trade {
             wants: [NO_ITEM; MAX_WANT_COUNT],
             offer: added_item,
         };
         trade_i += 1;
     }
 
-    for i in 0..trader_count {
+    for i in 0..trader_count as usize {
         active_npcs[i] = Npc::Trade(trades[i]);
     }
 
-    for npc in active_npcs.iter_mut().take(len).skip(trader_count) {
-        *npc = Npc::Agent(<_>::default());
+    for i in (trader_count as Entity)..len {
+        active_npcs[i as usize] = Npc::Agent(<_>::default());
+        xys[i] = door_adjacent_xys[i as usize % DOOR_COUNT];
     }
 
     xs_shuffle(rng, active_npcs);
 }
 
+const DOOR_COUNT: usize = 4;
+type DoorAdjacentXYs = [tile::XY; DOOR_COUNT];
+
 #[derive(Clone, Debug)]
 pub struct Tiles {
     tiles: TileDataArray,
+    #[allow(unused)]
+    door_adjacent_xys: DoorAdjacentXYs,
 }
 
 impl Default for Tiles {
     fn default() -> Self {
         Self {
             tiles: [TileData::default(); TILES_LENGTH as _],
+            door_adjacent_xys: DoorAdjacentXYs::default(),
         }
     }
 }
@@ -774,7 +789,6 @@ impl Board {
         let mut rng = xs_from_seed(seed);
 
         let mut xys = XYs::default();
-        xys[PLAYER_ENTITY] = tile::XY::from_rng(&mut rng);
 
         stbhw::xs_seed_global(new_seed(&mut rng));
 
@@ -946,7 +960,8 @@ impl Board {
             },
         ];
 
-        for edge in EDGES {
+        let mut door_adjacent_xys = [tile::XY::default(); DOOR_COUNT];
+        for (edge_i, edge) in EDGES.iter().enumerate() {
             compile_time_assert!(NORTH_INDEXES.len() < u32::MAX as usize);
             compile_time_assert!(WEST_INDEXES.len() < u32::MAX as usize);
             compile_time_assert!(SOUTH_INDEXES.len() < u32::MAX as usize);
@@ -956,34 +971,43 @@ impl Board {
 
             let random_offset = xs_u32(&mut rng, 0, len) as usize;
 
+            let mut found = false;
             for offset in 0..len as usize {
                 let random_edge_index = (random_offset + offset) % len as usize;
 
                 let random_tile_index = edge.indexes[random_edge_index];
 
                 let random_edge_xy = tile::i_to_xy(random_tile_index);
-    
+
                 let mut inner_xy = random_edge_xy;
                 move_xy(&mut inner_xy, edge.towards_middle, DIRECT_MOVE_VARIANT);
-    
+
                 use TileKind::*;
                 match tiles[tile::xy_to_i(inner_xy)].kind {
                     Floor => {
                         tiles[tile::xy_to_i(random_edge_xy)].kind = Door;
-                        
+                        door_adjacent_xys[edge_i] = inner_xy;
+
+                        found = true;
+
                         break
                     },
                     Wall | Door => {}
                 }
             }
+            assert!(found);
         }
+
+        xs_shuffle(&mut rng, &mut door_adjacent_xys);
+
+        xys[PLAYER_ENTITY] = door_adjacent_xys[0];
 
         let active_npcs = &mut npcs.0[NPC_ENTITY_MIN as usize..next_npc_index as usize];
 
-        populate_npcs(&mut rng, active_npcs);
+        populate_npcs(&mut rng, active_npcs, &mut xys, door_adjacent_xys);
 
         Self {
-            tiles: Tiles { tiles },
+            tiles: Tiles { tiles, door_adjacent_xys },
             npcs,
             xys,
             rng,
@@ -1658,7 +1682,7 @@ pub fn update(
                                 &state.sizes,
                                 target
                             );
-    
+
                             commands.push(Sprite(SpriteSpec{
                                 sprite: SpriteKind::Arrow(
                                     towards_trader,
@@ -1670,7 +1694,7 @@ pub fn update(
                                 ),
                                 xy: target_draw_xy,
                             }));
-    
+
                             commands.push(Line(LineSpec{
                                 start: tile_edge_to_tile_center(&state.sizes, draw_xy),
                                 end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
