@@ -271,7 +271,7 @@ pub fn next_walk_step(
         = HashMap::with_capacity(LONGEST_PATH_LENGTH);
     g_score.insert(at, 0);
 
-    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     struct ScoredXY {
         // For a ScoredXY with a given xy, we mantain that
         // f_score[xy] := g_score[xy] + manhattan_distance(at, xy).
@@ -432,6 +432,3 @@ impl XY {
             .map(|pair| pair.0)
     }
 }
-
-#[cfg(test)]
-mod tests;
