@@ -746,7 +746,10 @@ impl RegenState {
                 trade.offer = item_id;
 
                 // TODO randomize this maybe? Or is this unpredicatable enough?
-                self.item_offset += 1;
+                self.item_offset = self.item_offset.wrapping_add(1);
+                if self.item_offset > LAST_ITEM_ID - FIRST_ITEM_ID {
+                    self.item_offset = FIRST_ITEM_ID;
+                }
 
                 return Some(trade);
             }
