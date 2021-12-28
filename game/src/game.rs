@@ -1455,18 +1455,28 @@ pub fn update(
                                 );
                             },
                             Target(TradingSpot { xy: target, ..}) => {
+                                let mut needs_new_target = false;
                                 if is_walkable_map[tile::xy_to_i(target)] {
+                                    let at = state.board.xys[entity];
+
                                     let goal = tile::WalkGoal {
-                                        at: state.board.xys[entity],
+                                        at,
                                         target,
                                     };
                                     let next = tile::next_walk_step(
                                         &is_walkable_map,
                                         goal
                                     );
-
-                                    move_pairs.push((entity, next));
+                                    if next == at {
+                                        needs_new_target = true;
+                                    } else {
+                                        move_pairs.push((entity, next));
+                                    }
                                 } else {
+                                    needs_new_target = true;
+                                }
+
+                                if needs_new_target {
                                     // TODO Look around the same trader to see if
                                     // there is a walkable space nearby
                                     let spot = trader_spot_deck.draw(&mut state.board.rng);
