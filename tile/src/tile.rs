@@ -432,3 +432,6 @@ impl XY {
             .map(|pair| pair.0)
     }
 }
+
+#[cfg(test)]
+mod tests;
