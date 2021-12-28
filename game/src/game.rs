@@ -1462,6 +1462,10 @@ pub fn update(
                                 );
 
                                 move_pairs.push((entity, next));
+
+                                if entity == 65 && state.board.xys[entity] == next {
+                                    print!("{:?}\nat: {:?}\n target: {:?}\n{:?}\n", is_walkable_map, state.board.xys[entity], target, next);
+                                }
                             }
                         }
                     }
