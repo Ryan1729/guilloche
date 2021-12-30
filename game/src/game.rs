@@ -349,7 +349,8 @@ fn populate_npcs(
         xys[i] = door_adjacent_xys[i as usize % DOOR_COUNT];
     }
 
-    xs_shuffle(rng, active_npcs);
+    xs_shuffle(rng, &mut active_npcs[0..trader_count as usize]);
+    xs_shuffle(rng, &mut active_npcs[(trader_count as usize)..len as usize]);
 }
 
 const DOOR_COUNT: usize = 4;
@@ -882,6 +883,25 @@ impl Board {
                         kind,
                     }
                 }
+            }
+        }
+
+        // This block is only needed for asserts:
+        {
+            let mut seen = [false; TILES_LENGTH as _];
+
+            for entity in NPC_ENTITY_MIN as usize..next_npc_index as usize {
+                let xy = xys.0[entity];
+                let seen_i = tile::xy_to_i(xy);
+
+                assert!(
+                    !seen[seen_i],
+                    "{:?} was seen twice! index {}",
+                    xy,
+                    entity
+                );
+
+                seen[seen_i] = true;
             }
         }
 
