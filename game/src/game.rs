@@ -1459,6 +1459,8 @@ pub fn update(
         }
         is_walkable_map[tile::xy_to_i(state.board.xys[PLAYER_ENTITY])] = false;
 
+        type MovePair = (Entity, tile::XY);
+
         let mut move_pairs = Vec::with_capacity((NPC_ENTITY_MAX - NPC_ENTITY_MIN) as usize);
 
         macro_rules! fill_move_pairs {
@@ -1493,6 +1495,7 @@ pub fn update(
                                         &is_walkable_map,
                                         goal
                                     );
+
                                     if next == at {
                                         needs_new_target = true;
                                     } else {
@@ -1521,7 +1524,8 @@ pub fn update(
         fill_move_pairs!();
 
         use std::collections::HashMap;
-        let mut counts: HashMap<tile::XY, _> = HashMap::with_capacity(move_pairs.len());
+        type Counts = HashMap<tile::XY, Entity>;
+        let mut counts: Counts = HashMap::with_capacity(move_pairs.len());
         macro_rules! count {
             () => {
                 for &(_entity, xy) in &move_pairs {
@@ -1533,11 +1537,33 @@ pub fn update(
 
         count!();
 
+        // We assume the counts contains every xy so we use [].
+        fn can_move(counts: &Counts, (move_entity, move_xy): MovePair, xys: &XYs) -> bool {
+            debug_assert_ne!(counts[&move_xy], 0);
+            let mut output = counts[&move_xy] == 1;
+
+            // If there is a stack of agents occupying the same space, we want to
+            // allow the "top" one to move.
+            let mut stacked_count = 0;
+            let mut was_last = false;
+            let at = xys[move_entity];
+            for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                if xys[entity] == at {
+                    stacked_count += 1;
+                    was_last = entity == move_entity;
+                }
+            }
+
+            if stacked_count > 1 && was_last {
+                output = true;
+            }
+
+            output
+        }
+
         let mut needs_second_pass = false;
-        for (_entity, xy) in &move_pairs {
-            // We can use [] since we just inserted every xy.
-            debug_assert_ne!(counts[xy], 0);
-            let could_move = counts[xy] == 1;
+        for (entity, xy) in &move_pairs {
+            let could_move = can_move(&counts, (*entity, *xy), &state.board.xys);
 
             if !could_move {
                 // If multiple agents are trying to enter a space at the same
@@ -1590,8 +1616,7 @@ pub fn update(
             let mut trade_entities = None;
 
             if let Npc::Agent(ref mut agent) = state.board.npcs[agent_entity] {
-                // We can use [] since we just inserted every xy.
-                if counts[&target_xy] == 1 {
+                if can_move(&counts, (agent_entity, target_xy), &state.board.xys) {
                     state.board.xys[agent_entity] = target_xy;
 
                     // We need to drain these out eventually but we also need them
