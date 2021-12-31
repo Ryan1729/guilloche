@@ -995,7 +995,7 @@ impl Board {
             let random_offset = xs_u32(&mut rng, 0, len) as usize;
 
             let mut found = false;
-            for offset in 0..len as usize {
+            'offset: for offset in 0..len as usize {
                 let random_edge_index = (random_offset + offset) % len as usize;
 
                 let random_tile_index = edge.indexes[random_edge_index];
@@ -1008,6 +1008,12 @@ impl Board {
                 use TileKind::*;
                 match tiles[tile::xy_to_i(inner_xy)].kind {
                     Floor => {
+                        for entity in NPC_ENTITY_MIN..next_npc_index {
+                            if xys[entity] == inner_xy {
+                                continue 'offset
+                            }
+                        }
+
                         tiles[tile::xy_to_i(random_edge_xy)].kind = Door;
                         door_adjacent_xys[edge_i] = inner_xy;
 
