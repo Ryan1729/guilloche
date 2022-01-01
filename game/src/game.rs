@@ -353,13 +353,33 @@ fn populate_npcs(
     xs_shuffle(rng, &mut active_npcs[(trader_count as usize)..len as usize]);
 }
 
-const DOOR_COUNT: usize = 4;
+from_rng_enum_def!{
+    DoorIndex {
+        Zero,
+        One,
+        Two,
+        Three
+    }
+}
+
+impl DoorIndex {
+    fn usize(&self) -> usize {
+        use DoorIndex::*;
+        match self {
+            Zero => 0,
+            One => 1,
+            Two => 2,
+            Three => 3,
+        }
+    }
+}
+
+const DOOR_COUNT: usize = DoorIndex::COUNT;
 type DoorAdjacentXYs = [tile::XY; DOOR_COUNT];
 
 #[derive(Clone, Debug)]
 pub struct Tiles {
     tiles: TileDataArray,
-    #[allow(unused)]
     door_adjacent_xys: DoorAdjacentXYs,
 }
 
@@ -522,6 +542,7 @@ impl Trade {
     }
 }
 
+#[derive(Clone, Copy)]
 struct TradeEntities {
     agent_entity: Entity,
     trader_entity: Entity,
@@ -582,7 +603,8 @@ fn attempt_trade(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AgentTarget {
     NoTarget,
-    Target(TradingSpot),
+    Trader(TradingSpot),
+    Door(DoorIndex),
 }
 
 impl Default for AgentTarget {
@@ -1467,22 +1489,11 @@ pub fn update(
             () => {
                 for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                     if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
-                        use AgentTarget::*;
-                        match agent.target {
-                            NoTarget => {
-                                let spot = trader_spot_deck.draw(&mut state.board.rng);
-
-                                // It is, of course, possible that the location will not be
-                                // walkable by the time we get there. A form of the TOCTOU
-                                // problem. The agent will need to deal with this when they
-                                // get closer to there. Similarly they will also need to
-                                // deal with the possibility of multiple agents having the
-                                // same target, or the trader not being active at that time.
-                                agent.target = Target(
-                                    spot,
-                                );
-                            },
-                            Target(TradingSpot { xy: target, ..}) => {
+                        // We skip accepting trailing commas in nested macros until
+                        // https://github.com/rust-lang/rfcs/blob/master/text/3086-macro-metavar-expr.md
+                        macro_rules! push_move_towards {
+                            ($target: expr) => {
+                                let target = $target;
                                 let mut needs_new_target = false;
                                 if is_walkable_map[tile::xy_to_i(target)] {
                                     let at = state.board.xys[entity];
@@ -1510,10 +1521,36 @@ pub fn update(
                                     // there is a walkable space nearby
                                     let spot = trader_spot_deck.draw(&mut state.board.rng);
 
-                                    agent.target = Target(
+                                    agent.target = Trader(
                                         spot,
                                     );
                                 }
+                            }
+                        }
+
+                        use AgentTarget::*;
+                        match agent.target {
+                            NoTarget => {
+                                let spot = trader_spot_deck.draw(&mut state.board.rng);
+
+                                // It is, of course, possible that the location will not be
+                                // walkable by the time we get there. A form of the TOCTOU
+                                // problem. The agent will need to deal with this when they
+                                // get closer to there. Similarly they will also need to
+                                // deal with the possibility of multiple agents having the
+                                // same target, or the trader not being active at that time.
+                                agent.target = Trader(
+                                    spot,
+                                );
+                            },
+                            Trader(TradingSpot { xy: target, ..}) => {
+                                push_move_towards!(target);
+                            },
+                            Door(door_index) => {
+                                let target = state.board.tiles.door_adjacent_xys[
+                                    door_index.usize()
+                                ];
+                                push_move_towards!(target);
                             }
                         }
                     }
@@ -1575,10 +1612,9 @@ pub fn update(
 
         for (entity, xy) in &move_pairs {
             if let Npc::Agent(ref mut agent) = state.board.npcs[*entity] {
-                use AgentTarget::*;
-                match agent.target {
-                    NoTarget => {},
-                    Target(TradingSpot { xy: target, towards_trader: _}) => {
+                macro_rules! clear_blocked_moves {
+                    ($target: expr $(,)?) => {
+                        let target = $target;
                         let goal = tile::WalkGoal {
                             at: state.board.xys[*entity],
                             target,
@@ -1596,6 +1632,20 @@ pub fn update(
                                 }
                             }
                         }
+                    }
+                }
+
+                use AgentTarget::*;
+                match agent.target {
+                    NoTarget => {},
+                    Trader(TradingSpot { xy: target, towards_trader: _}) => {
+                        clear_blocked_moves!(target);
+                    }
+                    Door(door_index) => {
+                        let target = state.board.tiles.door_adjacent_xys[
+                            door_index.usize()
+                        ];
+                        clear_blocked_moves!(target);
                     }
                 }
             }
@@ -1636,8 +1686,8 @@ pub fn update(
 
                     use AgentTarget::*;
                     match agent.target {
-                        Target(TradingSpot{xy, towards_trader}) if xy == state.board.xys[agent_entity] => {
-                            // We have arrived.
+                        Trader(TradingSpot{xy, towards_trader}) if xy == state.board.xys[agent_entity] => {
+                            // We have arrived at a trader.
 
                             let trader_entity = {
                                 let mut trader_xy = xy;
@@ -1682,10 +1732,16 @@ pub fn update(
                                 }
                             }
                         }
-                        Target(..) => {
+                        Door(door_index) if state.board.tiles.door_adjacent_xys[
+                            door_index.usize()
+                        ] == state.board.xys[agent_entity] => {
+                            // We have arrived at a door
+                            dbg!(agent_entity);
+                        }
+                        Trader(..) | Door(..) => {
                             // Wait until we arrive
                         }
-                        _ => { debug_assert!(false, "unexpect AgentTarget") }
+                        NoTarget => { debug_assert!(false, "unexpect AgentTarget") }
                     }
                 }
             }
@@ -1695,6 +1751,19 @@ pub fn update(
                     &mut state.board,
                     trade_entities,
                 );
+
+                if let Npc::Agent(ref mut agent)
+                    = state.board.npcs[trade_entities.agent_entity] {
+                    dbg!(trade_entities.agent_entity);
+                    if agent.inventory.contains(THE_MACGUFFIN) {
+                        println!("THE_MACGUFFIN");
+                        agent.target = AgentTarget::Door(
+                            DoorIndex::from_rng(&mut state.board.rng)
+                        );
+                    }
+                } else {
+                    debug_assert!(false, "agent_entity {} was not an agent!", agent_entity);
+                }
             }
         }
     }
@@ -1751,7 +1820,7 @@ pub fn update(
                     use AgentTarget::*;
                     match agent.target {
                         NoTarget => {},
-                        Target(TradingSpot { xy: target, towards_trader}) => {
+                        Trader(TradingSpot { xy: target, towards_trader}) => {
                             let target_draw_xy = draw_xy_from_tile(
                                 &state.sizes,
                                 target
@@ -1768,6 +1837,21 @@ pub fn update(
                                 ),
                                 xy: target_draw_xy,
                             }));
+
+                            commands.push(Line(LineSpec{
+                                start: tile_edge_to_tile_center(&state.sizes, draw_xy),
+                                end: tile_edge_to_tile_center(&state.sizes, target_draw_xy),
+                            }));
+                        },
+                        Door(door_index) => {
+                            let target = state.board.tiles.door_adjacent_xys[
+                                door_index.usize()
+                            ];
+
+                            let target_draw_xy = draw_xy_from_tile(
+                                &state.sizes,
+                                target
+                            );
 
                             commands.push(Line(LineSpec{
                                 start: tile_edge_to_tile_center(&state.sizes, draw_xy),
