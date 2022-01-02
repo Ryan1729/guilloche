@@ -782,6 +782,41 @@ impl RegenState {
     }
 }
 
+#[test]
+fn regeneratable_trade_can_regenerate_the_last_item_id_in_this_case() {
+    let mut regen = RegenState::default();
+    let inventory = Inventory::default();
+    let mut npcs = Npcs::default();
+
+    let mut loops_left = LAST_ITEM_ID + (LAST_ITEM_ID / 2);
+    let mut saw_last = false;
+    // We assume that the method does not return None unless all the
+    // regeneration that can be done has been done.
+    while let Some(trade) = regen.regeneratable_trade(
+        &inventory,
+        &npcs,
+    ) {
+        if loops_left == 0 {
+            break
+        }
+        loops_left -= 1;
+
+        if trade.contains(LAST_ITEM_ID) {
+            saw_last = true;
+            break
+        }
+
+        for npc_i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+            if let Npc::NoTrade = npcs[npc_i] {
+                npcs[npc_i] = Npc::Trade(trade);
+                break;
+            }
+        }
+    }
+
+    assert!(saw_last, "loops_left: {}", loops_left);
+}
+
 #[derive(Debug, Default)]
 struct Board {
     regen: RegenState,
@@ -1759,7 +1794,7 @@ pub fn update(
                             println!("THE_MACGUFFIN {} =?= {}", entity, trade_entities.agent_entity);
                         }
                     }
-                    
+
                 }
 
                 if let Npc::Agent(ref mut agent)
@@ -1960,6 +1995,50 @@ pub fn update(
                 text: format!(
                     "input: {:?}",
                     input
+                ),
+                xy: DrawXY { x: left_text_x, y },
+                wh: DrawWH {
+                    w: state.sizes.play_xywh.w,
+                    h: small_section_h
+                },
+                kind: TextKind::UI,
+            }));
+
+            y += small_section_h;
+            commands.push(Text(TextSpec{
+                text: format!(
+                    "THE_MACGUFFIN: {:?}",
+                    {
+                        const FALLBACK: &str = "?";
+                        let mut output = (Entity::MAX, FALLBACK);
+
+                        for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                            match &state.board.npcs[entity as usize] {
+                                Npc::Nobody => break,
+                                Npc::NoTrade => {},
+                                Npc::Trade(trade) => {
+                                    if trade.contains(THE_MACGUFFIN) {
+                                        output = (entity, "Trader");
+                                        break
+                                    }
+                                }
+                                Npc::Agent(agent) => {
+                                    if agent.inventory.contains(THE_MACGUFFIN) {
+                                        output = (entity, "Agent");
+                                        break
+                                    }
+                                },
+                            }
+                        }
+
+                        if output.1 == FALLBACK {
+                            if state.board.inventory.contains(THE_MACGUFFIN) {
+                                output = (PLAYER_ENTITY, "Player");
+                            }
+                        }
+
+                        output
+                    }
                 ),
                 xy: DrawXY { x: left_text_x, y },
                 wh: DrawWH {
