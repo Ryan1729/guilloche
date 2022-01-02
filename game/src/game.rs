@@ -1752,6 +1752,16 @@ pub fn update(
                     trade_entities,
                 );
 
+                for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
+                    if let Npc::Agent(ref agent)
+                        = state.board.npcs[entity] {
+                        if agent.inventory.contains(THE_MACGUFFIN) {
+                            println!("THE_MACGUFFIN {} =?= {}", entity, trade_entities.agent_entity);
+                        }
+                    }
+                    
+                }
+
                 if let Npc::Agent(ref mut agent)
                     = state.board.npcs[trade_entities.agent_entity] {
                     dbg!(trade_entities.agent_entity);
