@@ -753,13 +753,13 @@ impl RegenState {
             npc_inventory
         };
 
-        for item_i in FIRST_ITEM_ID..=LAST_ITEM_ID {
+        for item_i in 0..=(LAST_ITEM_ID - FIRST_ITEM_ID) {
             type LargerThanItemId = u16;
             compile_time_assert!(LargerThanItemId::BITS > ItemId::BITS);
 
             let item_id = (
                 (item_i as LargerThanItemId + self.item_offset as LargerThanItemId)
-                % (LAST_ITEM_ID - FIRST_ITEM_ID) as LargerThanItemId
+                % (LAST_ITEM_ID - FIRST_ITEM_ID + 1) as LargerThanItemId
             ) as ItemId + FIRST_ITEM_ID;
 
             // TODO sometimes regenerate trades with wants.
@@ -771,7 +771,7 @@ impl RegenState {
                 // TODO randomize this maybe? Or is this unpredicatable enough?
                 self.item_offset = self.item_offset.wrapping_add(1);
                 if self.item_offset > LAST_ITEM_ID - FIRST_ITEM_ID {
-                    self.item_offset = FIRST_ITEM_ID;
+                    self.item_offset = 0;
                 }
 
                 return Some(trade);
@@ -800,6 +800,11 @@ fn regeneratable_trade_can_regenerate_the_last_item_id_in_this_case() {
             break
         }
         loops_left -= 1;
+
+        assert!(
+            trade.offer <= LAST_ITEM_ID
+            && trade.wants.iter().any(|&id| id <= LAST_ITEM_ID)
+        );
 
         if trade.contains(LAST_ITEM_ID) {
             saw_last = true;
@@ -1771,7 +1776,7 @@ pub fn update(
                             door_index.usize()
                         ] == state.board.xys[agent_entity] => {
                             // We have arrived at a door
-                            dbg!(agent_entity);
+                            
                         }
                         Trader(..) | Door(..) => {
                             // Wait until we arrive
@@ -1787,21 +1792,11 @@ pub fn update(
                     trade_entities,
                 );
 
-                for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                    if let Npc::Agent(ref agent)
-                        = state.board.npcs[entity] {
-                        if agent.inventory.contains(THE_MACGUFFIN) {
-                            println!("THE_MACGUFFIN {} =?= {}", entity, trade_entities.agent_entity);
-                        }
-                    }
-
-                }
-
                 if let Npc::Agent(ref mut agent)
                     = state.board.npcs[trade_entities.agent_entity] {
-                    dbg!(trade_entities.agent_entity);
+
                     if agent.inventory.contains(THE_MACGUFFIN) {
-                        println!("THE_MACGUFFIN");
+                        println!("FOUND THE_MACGUFFIN");
                         agent.target = AgentTarget::Door(
                             DoorIndex::from_rng(&mut state.board.rng)
                         );
