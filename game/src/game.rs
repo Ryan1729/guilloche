@@ -626,7 +626,8 @@ enum Npc {
     Nobody,
     Trade(Trade),
     NoTrade,
-    Agent(Agent)
+    Agent(Agent),
+    AbsentAgent,
 }
 
 impl Default for Npc {
@@ -637,11 +638,13 @@ impl Default for Npc {
 
 impl Npc {
     fn is_walkable(&self) -> bool {
+        use Npc::*;
         match self {
-            Npc::Nobody => true,
-            Npc::Trade(_)
-            | Npc::NoTrade
-            | Npc::Agent(_) => false,
+            Nobody
+            | AbsentAgent => true,
+            Trade(_)
+            | NoTrade
+            | Agent(_) => false,
         }
     }
 }
@@ -700,12 +703,14 @@ impl Default for Speech {
 
 impl From<&Npc> for Speech {
     fn from(npc: &Npc) -> Self {
+        use Npc::*;
         match npc {
-            Npc::Nobody
-            | Npc::NoTrade
+            Nobody
+            | NoTrade
             // Later, we can have the agent make trades too.
-            | Npc::Agent(_) => Self::Silence,
-            Npc::Trade(trade) => Self::Trade(*trade),
+            | Agent(_)
+            | AbsentAgent => Self::Silence,
+            Trade(trade) => Self::Trade(*trade),
         }
     }
 }
@@ -743,10 +748,11 @@ impl RegenState {
                             npc_inventory.insert(id);
                         }
                     },
-                    Npc::NoTrade => {},
                     Npc::Agent(agent) => {
                         npc_inventory.insert_all(agent.inventory);
-                    }
+                    },
+                    Npc::NoTrade
+                    | Npc::AbsentAgent => {},
                 }
             }
 
@@ -1117,9 +1123,7 @@ impl Board {
             for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                 match self.npcs[i] {
                     Npc::Nobody => break,
-                    Npc::NoTrade
-                    | Npc::Trade(_)
-                    | Npc::Agent(_) => if self.xys[i] == xy {
+                    ref other => if !other.is_walkable() && self.xys[i] == xy {
                         return false;
                     },
                 }
@@ -1776,7 +1780,7 @@ pub fn update(
                             door_index.usize()
                         ] == state.board.xys[agent_entity] => {
                             // We have arrived at a door
-                            
+                            state.board.npcs[agent_entity] = Npc::AbsentAgent;
                         }
                         Trader(..) | Door(..) => {
                             // Wait until we arrive
@@ -1826,6 +1830,7 @@ pub fn update(
     for i in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
         match &state.board.npcs[i as usize] {
             Npc::Nobody => break,
+            Npc::AbsentAgent => {},
             Npc::Trade(_) => {
                 commands.push(Sprite(SpriteSpec{
                     sprite: SpriteKind::Eye(
@@ -2010,7 +2015,7 @@ pub fn update(
                         for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
                             match &state.board.npcs[entity as usize] {
                                 Npc::Nobody => break,
-                                Npc::NoTrade => {},
+                                Npc::NoTrade | Npc::AbsentAgent => {},
                                 Npc::Trade(trade) => {
                                     if trade.contains(THE_MACGUFFIN) {
                                         output = (entity, "Trader");
@@ -2136,6 +2141,15 @@ pub fn update(
                                 sprite: SpriteKind::Eye(
                                     EyeVariant::Agent,
                                     state.board.eye_states[i].sprite()
+                                ),
+                                xy,
+                            }));
+                        },
+                        Npc::AbsentAgent => {
+                            commands.push(Sprite(SpriteSpec{
+                                sprite: SpriteKind::Eye(
+                                    EyeVariant::Agent,
+                                    EyeState::Closed.sprite(),
                                 ),
                                 xy,
                             }));
