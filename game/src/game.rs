@@ -2067,7 +2067,6 @@ pub fn update(
                 }));
             }
 
-            #[cfg(any())]
             {
                 y += small_section_h;
 
@@ -2077,7 +2076,8 @@ pub fn update(
                     match &state.board.npcs[i as usize] {
                         Npc::Nobody => break,
                         Npc::Trade(_)
-                        | Npc::NoTrade => {
+                        | Npc::NoTrade
+                        | Npc::AbsentAgent => {
 
                         },
                         Npc::Agent(agent) => {
