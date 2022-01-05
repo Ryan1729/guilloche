@@ -1826,7 +1826,6 @@ pub fn update(
                     = state.board.npcs[trade_entities.agent_entity] {
 
                     if agent.inventory.contains(THE_MACGUFFIN) {
-                        println!("FOUND THE_MACGUFFIN");
                         agent.target = AgentTarget::Door(
                             DoorIndex::from_rng(&mut state.board.rng)
                         );
