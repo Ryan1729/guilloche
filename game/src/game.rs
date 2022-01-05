@@ -715,9 +715,11 @@ impl From<&Npc> for Speech {
     }
 }
 
+const TARGET_FPS: u8 = 60;
+
 type RegenTimer = u16;
 
-const REGEN_TIMER_LENGTH: RegenTimer = 3;// * 60 /* 60 FPS */ ;
+const REGEN_TIMER_LENGTH: RegenTimer = TARGET_FPS as RegenTimer / 10;
 
 #[derive(Debug, Default)]
 struct RegenState {
@@ -828,9 +830,14 @@ fn regeneratable_trade_can_regenerate_the_last_item_id_in_this_case() {
     assert!(saw_last, "loops_left: {}", loops_left);
 }
 
+type AgentRespawnTimer = u16;
+
+const AGENT_RESPAWN_TIMER_LENGTH: AgentRespawnTimer = 8;// * TARGET_FPS as AgentRespawnTimer;
+
 #[derive(Debug, Default)]
 struct Board {
     regen: RegenState,
+    agent_respawn_timer: AgentRespawnTimer,
     tiles: Tiles,
     npcs: Npcs,
     xys: XYs,
@@ -1491,6 +1498,17 @@ pub fn update(
     }
 
     {
+        state.board.agent_respawn_timer += 1;
+        let mut agent_respawn_token = if 
+            state.board.agent_respawn_timer > AGENT_RESPAWN_TIMER_LENGTH
+        {
+            state.board.agent_respawn_timer = 0;
+
+            Some(())
+        } else {
+            None
+        };
+
         let mut trader_spot_deck: Option<_> = TradingSpotDeck::active_trading_spots(
             &mut state.board,
         );
@@ -1534,67 +1552,77 @@ pub fn update(
         macro_rules! fill_move_pairs {
             () => {
                 for entity in NPC_ENTITY_MIN..=NPC_ENTITY_MAX {
-                    if let Npc::Agent(ref mut agent) = state.board.npcs[entity] {
-                        // We skip accepting trailing commas in nested macros until
-                        // https://github.com/rust-lang/rfcs/blob/master/text/3086-macro-metavar-expr.md
-                        macro_rules! push_move_towards {
-                            ($target: expr) => {
-                                let target = $target;
-                                let mut needs_new_target = false;
-                                if is_walkable_map[tile::xy_to_i(target)] {
-                                    let at = state.board.xys[entity];
-
-                                    let goal = tile::WalkGoal {
-                                        at,
-                                        target,
-                                    };
-                                    let next = tile::next_walk_step(
-                                        &is_walkable_map,
-                                        goal
-                                    );
-
-                                    if next == at {
-                                        needs_new_target = true;
+                    match state.board.npcs[entity] {
+                        Npc::Agent(ref mut agent) => {
+                            // We skip accepting trailing commas in nested macros until
+                            // https://github.com/rust-lang/rfcs/blob/master/text/3086-macro-metavar-expr.md
+                            macro_rules! push_move_towards {
+                                ($target: expr) => {
+                                    let target = $target;
+                                    let mut needs_new_target = false;
+                                    if is_walkable_map[tile::xy_to_i(target)] {
+                                        let at = state.board.xys[entity];
+    
+                                        let goal = tile::WalkGoal {
+                                            at,
+                                            target,
+                                        };
+                                        let next = tile::next_walk_step(
+                                            &is_walkable_map,
+                                            goal
+                                        );
+    
+                                        if next == at {
+                                            needs_new_target = true;
+                                        } else {
+                                            move_pairs.push((entity, next));
+                                        }
                                     } else {
-                                        move_pairs.push((entity, next));
+                                        needs_new_target = true;
                                     }
-                                } else {
-                                    needs_new_target = true;
+    
+                                    if needs_new_target {
+                                        // TODO Look around the same trader to see if
+                                        // there is a walkable space nearby
+                                        if let Some(spot) = trader_spot_deck.as_mut().map(|d| d.draw(&mut state.board.rng)) {
+                                            agent.target = Trader(spot);
+                                        }
+                                    }
                                 }
-
-                                if needs_new_target {
-                                    // TODO Look around the same trader to see if
-                                    // there is a walkable space nearby
+                            }
+    
+                            use AgentTarget::*;
+                            match agent.target {
+                                NoTarget => {
                                     if let Some(spot) = trader_spot_deck.as_mut().map(|d| d.draw(&mut state.board.rng)) {
+                                        // It is, of course, possible that the location will not be
+                                        // walkable by the time we get there. A form of the TOCTOU
+                                        // problem. The agent will need to deal with this when they
+                                        // get closer to there. Similarly they will also need to
+                                        // deal with the possibility of multiple agents having the
+                                        // same target, or the trader not being active at that time.
                                         agent.target = Trader(spot);
                                     }
+                                },
+                                Trader(TradingSpot { xy: target, ..}) => {
+                                    push_move_towards!(target);
+                                },
+                                Door(door_index) => {
+                                    let target = state.board.tiles.door_adjacent_xys[
+                                        door_index.usize()
+                                    ];
+                                    push_move_towards!(target);
                                 }
                             }
-                        }
-
-                        use AgentTarget::*;
-                        match agent.target {
-                            NoTarget => {
-                                if let Some(spot) = trader_spot_deck.as_mut().map(|d| d.draw(&mut state.board.rng)) {
-                                    // It is, of course, possible that the location will not be
-                                    // walkable by the time we get there. A form of the TOCTOU
-                                    // problem. The agent will need to deal with this when they
-                                    // get closer to there. Similarly they will also need to
-                                    // deal with the possibility of multiple agents having the
-                                    // same target, or the trader not being active at that time.
-                                    agent.target = Trader(spot);
-                                }
-                            },
-                            Trader(TradingSpot { xy: target, ..}) => {
-                                push_move_towards!(target);
-                            },
-                            Door(door_index) => {
-                                let target = state.board.tiles.door_adjacent_xys[
-                                    door_index.usize()
-                                ];
-                                push_move_towards!(target);
+                        },
+                        Npc::AbsentAgent => {
+                            if let Some(()) = agent_respawn_token.take() {
+                                state.board.npcs[entity] = Npc::Agent(
+                                    Agent::default()
+                                );
                             }
                         }
+                        _ => {}
                     }
                 }
             }
