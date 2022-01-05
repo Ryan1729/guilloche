@@ -1490,9 +1490,11 @@ pub fn update(
         },
     }
 
-    if let Some(mut trader_spot_deck) = TradingSpotDeck::active_trading_spots(
-        &mut state.board,
-    ) {
+    {
+        let mut trader_spot_deck: Option<_> = TradingSpotDeck::active_trading_spots(
+            &mut state.board,
+        );
+
         // TODO is it worth it to make this a per-frame thing? Or maybe store it
         // across frames and update it?
         let mut is_walkable_map: tile::IsWalkableMap = [false; TILES_LENGTH];
@@ -1563,11 +1565,9 @@ pub fn update(
                                 if needs_new_target {
                                     // TODO Look around the same trader to see if
                                     // there is a walkable space nearby
-                                    let spot = trader_spot_deck.draw(&mut state.board.rng);
-
-                                    agent.target = Trader(
-                                        spot,
-                                    );
+                                    if let Some(spot) = trader_spot_deck.as_mut().map(|d| d.draw(&mut state.board.rng)) {
+                                        agent.target = Trader(spot);
+                                    }
                                 }
                             }
                         }
@@ -1575,17 +1575,15 @@ pub fn update(
                         use AgentTarget::*;
                         match agent.target {
                             NoTarget => {
-                                let spot = trader_spot_deck.draw(&mut state.board.rng);
-
-                                // It is, of course, possible that the location will not be
-                                // walkable by the time we get there. A form of the TOCTOU
-                                // problem. The agent will need to deal with this when they
-                                // get closer to there. Similarly they will also need to
-                                // deal with the possibility of multiple agents having the
-                                // same target, or the trader not being active at that time.
-                                agent.target = Trader(
-                                    spot,
-                                );
+                                if let Some(spot) = trader_spot_deck.as_mut().map(|d| d.draw(&mut state.board.rng)) {
+                                    // It is, of course, possible that the location will not be
+                                    // walkable by the time we get there. A form of the TOCTOU
+                                    // problem. The agent will need to deal with this when they
+                                    // get closer to there. Similarly they will also need to
+                                    // deal with the possibility of multiple agents having the
+                                    // same target, or the trader not being active at that time.
+                                    agent.target = Trader(spot);
+                                }
                             },
                             Trader(TradingSpot { xy: target, ..}) => {
                                 push_move_towards!(target);
