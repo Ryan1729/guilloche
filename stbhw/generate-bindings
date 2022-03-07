@@ -2,6 +2,8 @@
 
 # bindgen was installed by running:
 # cargo install bindgen
+# As of this writing there are additional requirements.
+# See https://rust-lang.github.io/rust-bindgen/requirements.html
 
 bindgen wrapper.h -o src/sys/bindings.rs \
 --allowlist-function '^stbhw_.*'                           \
