@@ -1,5 +1,7 @@
 # Guilloche
 
+![screenshot](/screenshot.png?raw=true "A top-down view of a maze, with cyclopean squares moving through it. One of them has it's eye wide open, staing at the viewer.")
+
 A game or whatever that as of yet is still finding itself.
 
 # Building/Running
